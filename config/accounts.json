@@ -19,8 +19,8 @@
     {
       "key": "fb-main",
       "platform": "facebook",
-      "id": "YOUR_FACEBOOK_PAGE_ID",
-      "label": "Facebook 主粉專",
+      "id": "255034405020824",
+      "label": "高雄市政府運動發展局 Facebook",
       "token_env": "FB_TOKEN_1",
       "enabled": true
     },
