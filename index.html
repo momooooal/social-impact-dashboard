@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="彙整 Facebook、Instagram、Threads 社群效益的年度成果儀表板" />
+  <title>社群效益戰情室</title>
+  <link rel="stylesheet" href="assets/style.css" />
+  <script id="chartjs" src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" async onload="window.dispatchEvent(new Event('chartjs-ready'))"></script>
+  <script src="assets/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark">S</div>
+        <div>
+          <strong id="brandTitle">社群效益戰情室</strong>
+          <span id="brandOrg">Social Impact Dashboard</span>
+        </div>
+      </div>
+      <nav class="nav" aria-label="主要功能">
+        <button class="nav-item active" data-view="overview">總覽</button>
+        <button class="nav-item" data-view="trend">趨勢分析</button>
+        <button class="nav-item" data-view="content">內容效益</button>
+        <button class="nav-item" data-view="report">經費成果報告</button>
+        <button class="nav-item" data-view="data">資料狀態</button>
+      </nav>
+      <div class="sidebar-note">
+        <span class="eyebrow">資料策略</span>
+        <strong>每天留一份歷史快照</strong>
+        <p>不只看現在，更保留明年寫成果報告時需要的年度證據。</p>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button id="menuBtn" class="icon-btn mobile-only" aria-label="開啟選單">☰</button>
+        <div>
+          <p class="eyebrow">SOCIAL PERFORMANCE</p>
+          <h1 id="pageTitle">社群效益總覽</h1>
+          <p class="subtle" id="dataStamp">載入資料中…</p>
+        </div>
+        <div class="top-actions">
+          <button class="btn ghost" id="exportCsvBtn">匯出 CSV</button>
+          <button class="btn primary" id="printBtn">列印／存 PDF</button>
+        </div>
+      </header>
+
+      <section class="filter-panel no-print">
+        <div class="filter-group grow">
+          <label>期間</label>
+          <div class="segmented" id="rangePresets">
+            <button data-range="30">近 30 天</button>
+            <button data-range="90">近 90 天</button>
+            <button data-range="ytd" class="active">今年至今</button>
+            <button data-range="year">整年度</button>
+          </div>
+        </div>
+        <div class="filter-group date-pair">
+          <label for="startDate">自訂日期</label>
+          <div>
+            <input type="date" id="startDate" />
+            <span>—</span>
+            <input type="date" id="endDate" />
+          </div>
+        </div>
+        <div class="filter-group">
+          <label>平台</label>
+          <div class="platform-chips" id="platformFilters"></div>
+        </div>
+        <label class="check-line"><input type="checkbox" id="compareToggle" checked /> 與前一等長期間比較</label>
+      </section>
+
+      <div id="loadingState" class="state-card">正在整理社群數據…</div>
+      <div id="errorState" class="state-card error hidden"></div>
+
+      <div id="dashboard" class="hidden">
+        <section class="view active" id="view-overview">
+          <div class="hero-row">
+            <div>
+              <p class="eyebrow">EXECUTIVE SUMMARY</p>
+              <h2>這段期間，社群到底做出了什麼？</h2>
+              <p class="subtle">把平台後台的碎片數字，轉成主管與預算審查真正能讀的「觸及量體、互動深度、受眾累積與內容產出」。</p>
+            </div>
+            <div class="source-badge" id="sourceBadge"></div>
+          </div>
+
+          <div class="metric-grid" id="metricCards"></div>
+
+          <div class="grid-2">
+            <article class="card chart-card">
+              <div class="card-head">
+                <div><p class="eyebrow">PERFORMANCE TREND</p><h3>效益走勢</h3></div>
+                <select id="overviewTrendMetric">
+                  <option value="views">觀看／曝光</option>
+                  <option value="interactions">互動</option>
+                  <option value="netFollowers">淨追蹤成長</option>
+                </select>
+              </div>
+              <div class="chart-wrap"><canvas id="overviewTrendChart"></canvas></div>
+            </article>
+            <article class="card chart-card">
+              <div class="card-head"><div><p class="eyebrow">PLATFORM MIX</p><h3>各平台貢獻</h3></div></div>
+              <div class="chart-wrap"><canvas id="platformChart"></canvas></div>
+            </article>
+          </div>
+
+          <div class="grid-3">
+            <article class="card insight-card">
+              <p class="eyebrow">BEST PLATFORM</p>
+              <h3 id="bestPlatformTitle">—</h3>
+              <p id="bestPlatformText" class="subtle">—</p>
+            </article>
+            <article class="card insight-card">
+              <p class="eyebrow">BEST CONTENT</p>
+              <h3 id="bestContentTitle">—</h3>
+              <p id="bestContentText" class="subtle">—</p>
+            </article>
+            <article class="card insight-card">
+              <p class="eyebrow">GROWTH SIGNAL</p>
+              <h3 id="growthTitle">—</h3>
+              <p id="growthText" class="subtle">—</p>
+            </article>
+          </div>
+
+          <article class="card">
+            <div class="card-head">
+              <div><p class="eyebrow">MONTHLY SCORECARD</p><h3>每月成果表</h3></div>
+              <span class="hint">可直接當年度成果附件的骨架</span>
+            </div>
+            <div class="table-wrap"><table id="monthlyTable"></table></div>
+          </article>
+        </section>
+
+        <section class="view" id="view-trend">
+          <div class="section-title"><p class="eyebrow">TREND & COMPARISON</p><h2>趨勢分析</h2><p class="subtle">看「現在是多少」不夠，還要看「有沒有越做越好」。</p></div>
+          <div class="grid-2">
+            <article class="card chart-card tall">
+              <div class="card-head"><h3>平台觀看／曝光趨勢</h3><span class="hint">日資料自動按期間聚合</span></div>
+              <div class="chart-wrap"><canvas id="viewsTrendChart"></canvas></div>
+            </article>
+            <article class="card chart-card tall">
+              <div class="card-head"><h3>互動趨勢</h3><span class="hint">各平台定義保留原差異</span></div>
+              <div class="chart-wrap"><canvas id="interactionsTrendChart"></canvas></div>
+            </article>
+          </div>
+          <div class="grid-2">
+            <article class="card chart-card">
+              <div class="card-head"><h3>追蹤者淨成長</h3></div>
+              <div class="chart-wrap"><canvas id="followersChart"></canvas></div>
+            </article>
+            <article class="card">
+              <div class="card-head"><h3>期間比較</h3></div>
+              <div id="comparisonPanel" class="comparison-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" id="view-content">
+          <div class="section-title"><p class="eyebrow">CONTENT INTELLIGENCE</p><h2>內容效益</h2><p class="subtle">找出什麼內容值得繼續投資，而不是只說「這篇讚數很多」。</p></div>
+          <div class="content-kpis" id="contentKpis"></div>
+          <div class="grid-2">
+            <article class="card chart-card">
+              <div class="card-head"><h3>內容類型效益</h3><select id="contentMetric"><option value="views">平均觀看</option><option value="interactions">平均互動</option><option value="engagement">互動率</option></select></div>
+              <div class="chart-wrap"><canvas id="contentTypeChart"></canvas></div>
+            </article>
+            <article class="card">
+              <div class="card-head"><h3>發文時段熱區</h3><span class="hint">以貼文績效平均值計算</span></div>
+              <div id="heatmap" class="heatmap"></div>
+            </article>
+          </div>
+          <article class="card">
+            <div class="card-head">
+              <div><p class="eyebrow">TOP CONTENT</p><h3>高效內容排行</h3></div>
+              <div class="inline-controls"><select id="topPostMetric"><option value="views">觀看／曝光</option><option value="interactions">互動數</option><option value="engagement">互動率</option></select><select id="topPostLimit"><option value="10">Top 10</option><option value="20">Top 20</option><option value="50">Top 50</option></select></div>
+            </div>
+            <div class="table-wrap"><table id="topPostsTable"></table></div>
+          </article>
+        </section>
+
+        <section class="view" id="view-report">
+          <div class="section-title"><p class="eyebrow">BUDGET EVIDENCE PACK</p><h2>經費成果報告</h2><p class="subtle">把社群數據翻譯成「為什麼值得繼續編列經費」。</p></div>
+          <div class="grid-2 report-grid">
+            <article class="card">
+              <div class="card-head"><div><p class="eyebrow">KPI PROGRESS</p><h3>年度 KPI 達成率</h3></div></div>
+              <div id="goalProgress" class="progress-list"></div>
+            </article>
+            <article class="card report-summary-card">
+              <div class="card-head"><div><p class="eyebrow">AUTO SUMMARY</p><h3>成果摘要草稿</h3></div><button class="btn small ghost no-print" id="copySummaryBtn">複製文字</button></div>
+              <div id="reportSummary" class="report-copy"></div>
+            </article>
+          </div>
+          <article class="card">
+            <div class="card-head"><div><p class="eyebrow">EVIDENCE TABLE</p><h3>年度效益證據表</h3></div><button class="btn small ghost no-print" id="downloadJsonBtn">下載完整 JSON</button></div>
+            <div class="table-wrap"><table id="evidenceTable"></table></div>
+          </article>
+          <article class="card methodology">
+            <p class="eyebrow">METHODOLOGY</p>
+            <h3>報告建議怎麼引用這些數字？</h3>
+            <div class="method-grid">
+              <div><strong>1. 先講量體</strong><p>年度總觀看／曝光、內容產出量、追蹤者規模。</p></div>
+              <div><strong>2. 再講品質</strong><p>互動數、互動率、高效內容占比，以及與前期相比是否成長。</p></div>
+              <div><strong>3. 最後講累積資產</strong><p>社群不是一次性宣傳；追蹤者與歷史內容會持續形成未來觸及基礎。</p></div>
+            </div>
+          </article>
+        </section>
+
+        <section class="view" id="view-data">
+          <div class="section-title"><p class="eyebrow">DATA HEALTH</p><h2>資料狀態</h2><p class="subtle">先知道哪些資料真的有抓到、哪些指標因 API 權限或平台變更而缺漏。</p></div>
+          <div id="accountStatus" class="account-grid"></div>
+          <div class="grid-2">
+            <article class="card"><div class="card-head"><h3>最近蒐集紀錄</h3></div><div class="table-wrap"><table id="collectionLogTable"></table></div></article>
+            <article class="card"><div class="card-head"><h3>API 警告</h3><span class="hint" id="warningCount"></span></div><div id="warningsList" class="warning-list"></div></article>
+          </div>
+          <article class="card definitions">
+            <p class="eyebrow">METRIC DEFINITIONS</p><h3>跨平台數字不要硬混</h3>
+            <div class="definition-grid">
+              <div><strong>觀看／曝光 Views</strong><p>作為跨平台「被看見的量體」統一欄位，但每個平台官方定義仍有差異。</p></div>
+              <div><strong>觸及 Reach</strong><p>僅在 API 有提供可比較的唯一受眾指標時顯示；缺值不會被當成 0 人。</p></div>
+              <div><strong>互動 Interactions</strong><p>平台帳號層級可用官方 total interactions/engagement；貼文層級則加總讚、留言、分享、收藏、回覆、轉發等可取得動作。</p></div>
+              <div><strong>互動率</strong><p>預設用互動 ÷ 觀看（若無觀看則用觸及）。用於內容間相對比較，不宣稱是 Meta 官方單一指標。</p></div>
+            </div>
+          </article>
+        </section>
+      </div>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

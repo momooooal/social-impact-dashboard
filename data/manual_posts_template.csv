@@ -1,0 +1,4 @@
+id,platform,account_key,timestamp,text,permalink,media_type,views,reach,likes,comments,replies,shares,saves,reposts,quotes,interactions
+sample-001,facebook,fb-main,2026-08-01T10:00:00+08:00,示範貼文,https://example.com,PHOTO,18000,12000,820,51,,95,,,,966
+sample-002,instagram,ig-main,2026-08-02T18:30:00+08:00,示範 Reels,https://example.com,REELS,32000,22000,1800,73,,210,390,,,2473
+sample-003,threads,threads-main,2026-08-03T12:20:00+08:00,示範串文,https://example.com,TEXT_POST,14000,,960,,180,42,,85,21,1288
