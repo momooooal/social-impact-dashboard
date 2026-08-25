@@ -2,230 +2,126 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="彙整 Facebook、Instagram、Threads 社群效益的年度成果儀表板" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Facebook、Instagram、Threads 社群效益與活動宣傳分析" />
   <title>社群效益戰情室</title>
   <link rel="stylesheet" href="assets/style.css" />
-  <script id="chartjs" src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" async onload="window.dispatchEvent(new Event('chartjs-ready'))"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" defer></script>
   <script src="assets/app.js" defer></script>
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar" id="sidebar">
-      <div class="brand">
-        <div class="brand-mark">S</div>
-        <div>
-          <strong id="brandTitle">社群效益戰情室</strong>
-          <span id="brandOrg">Social Impact Dashboard</span>
-        </div>
-      </div>
-      <nav class="nav" aria-label="主要功能">
-        <button class="nav-item active" data-view="overview">總覽</button>
-        <button class="nav-item" data-view="trend">趨勢分析</button>
-        <button class="nav-item" data-view="content">內容效益</button>
-        <button class="nav-item" data-view="report">經費成果報告</button>
-        <button class="nav-item" data-view="data">資料狀態</button>
-      </nav>
-      <div class="sidebar-note">
-        <span class="eyebrow">資料策略</span>
-        <strong>每天留一份歷史快照</strong>
-        <p>不只看現在，更保留明年寫成果報告時需要的年度證據。</p>
-      </div>
-    </aside>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><div class="brand-mark">S</div><div><strong>社群效益戰情室</strong><span id="brandOrg">高雄市政府運動發展局</span></div></div>
+    <nav class="nav">
+      <button class="nav-item active" data-view="overview">總覽</button>
+      <button class="nav-item" data-view="activity">單一活動分析</button>
+      <button class="nav-item" data-view="content">宣傳內容管理</button>
+      <button class="nav-item" data-view="inquiries">民眾詢問分析</button>
+      <button class="nav-item" data-view="report">年度成果</button>
+      <button class="nav-item" data-view="data">資料管理</button>
+    </nav>
+    <div class="sidebar-note"><span class="eyebrow">MANUAL-FIRST</span><strong>不用 Meta API</strong><p>每月填一次後台數字；貼文與詢問可手動新增或匯入 CSV，網站負責整理與分析。</p></div>
+  </aside>
 
-    <main class="main">
-      <header class="topbar">
-        <button id="menuBtn" class="icon-btn mobile-only" aria-label="開啟選單">☰</button>
-        <div>
-          <p class="eyebrow">SOCIAL PERFORMANCE</p>
-          <h1 id="pageTitle">社群效益總覽</h1>
-          <p class="subtle" id="dataStamp">載入資料中…</p>
-        </div>
-        <div class="top-actions">
-          <button class="btn ghost" id="exportCsvBtn">匯出 CSV</button>
-          <button class="btn primary" id="printBtn">列印／存 PDF</button>
-        </div>
-      </header>
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn mobile-only" id="menuBtn">☰</button>
+      <div><p class="eyebrow">SOCIAL PERFORMANCE</p><h1 id="pageTitle">社群效益總覽</h1><p class="subtle" id="dataStamp">載入中…</p></div>
+      <div class="top-actions no-print">
+        <button class="btn soft" id="addMonthBtn">＋ 新增本月社群數據</button>
+        <button class="btn primary" id="printBtn">列印／存 PDF</button>
+      </div>
+    </header>
 
-      <section class="filter-panel no-print">
-        <div class="filter-group grow">
-          <label>期間</label>
-          <div class="segmented" id="rangePresets">
-            <button data-range="30">近 30 天</button>
-            <button data-range="90">近 90 天</button>
-            <button data-range="ytd" class="active">今年至今</button>
-            <button data-range="year">整年度</button>
-          </div>
+    <section class="filter-panel no-print">
+      <div class="filter-group"><label>年度</label><select id="yearFilter"></select></div>
+      <div class="filter-group"><label>月份範圍</label><div class="date-pair"><select id="monthStart"></select><span>—</span><select id="monthEnd"></select></div></div>
+      <div class="filter-group grow"><label>平台</label><div class="platform-chips" id="platformFilters"></div></div>
+    </section>
+
+    <div id="loadingState" class="state-card">正在整理資料…</div>
+    <div id="errorState" class="state-card error hidden"></div>
+
+    <div id="dashboard" class="hidden">
+      <section class="view active" id="view-overview">
+        <div class="hero-row"><div><p class="eyebrow">EXECUTIVE SUMMARY</p><h2>這段期間，社群帶來了什麼？</h2><p class="subtle">不只貼文讚數：把限動、連結點擊、私訊諮詢與內容產出一起納入成果。</p></div><div class="source-badge">人工資料・本機自動儲存</div></div>
+        <div class="metric-grid" id="metricCards"></div>
+        <div class="grid-2">
+          <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">MONTHLY TREND</p><h3>每月效益趨勢</h3></div><select id="trendMetric"><option value="views">觀看／曝光</option><option value="contentInteractions">內容互動</option><option value="serviceInteractions">私訊諮詢</option><option value="netFollowers">淨追蹤成長</option></select></div><div class="chart-wrap"><canvas id="trendChart"></canvas></div></article>
+          <article class="card chart-card"><div class="card-head"><div><p class="eyebrow">INTERACTION MIX</p><h3>互動組成</h3></div></div><div class="chart-wrap"><canvas id="interactionChart"></canvas></div></article>
         </div>
-        <div class="filter-group date-pair">
-          <label for="startDate">自訂日期</label>
-          <div>
-            <input type="date" id="startDate" />
-            <span>—</span>
-            <input type="date" id="endDate" />
-          </div>
-        </div>
-        <div class="filter-group">
-          <label>平台</label>
-          <div class="platform-chips" id="platformFilters"></div>
-        </div>
-        <label class="check-line"><input type="checkbox" id="compareToggle" checked /> 與前一等長期間比較</label>
+        <article class="card"><div class="card-head"><div><p class="eyebrow">MONTHLY SCORECARD</p><h3>每月成果表</h3></div><button class="btn small ghost no-print" id="addMonthBtn2">＋新增月份</button></div><div class="table-wrap"><table id="monthlyTable"></table></div></article>
       </section>
 
-      <div id="loadingState" class="state-card">正在整理社群數據…</div>
-      <div id="errorState" class="state-card error hidden"></div>
-
-      <div id="dashboard" class="hidden">
-        <section class="view active" id="view-overview">
-          <div class="hero-row">
-            <div>
-              <p class="eyebrow">EXECUTIVE SUMMARY</p>
-              <h2>這段期間，社群到底做出了什麼？</h2>
-              <p class="subtle">把平台後台的碎片數字，轉成主管與預算審查真正能讀的「觸及量體、互動深度、受眾累積與內容產出」。</p>
-            </div>
-            <div class="source-badge" id="sourceBadge"></div>
-          </div>
-
-          <div class="metric-grid" id="metricCards"></div>
-
+      <section class="view" id="view-activity">
+        <div class="section-title"><p class="eyebrow">CAMPAIGN ANALYSIS</p><h2>單一活動宣傳分析</h2><p class="subtle">系統依活動名稱、關鍵字與宣傳期間自動提出歸屬；你永遠可以手動改活動、勾選納入或排除。</p></div>
+        <div class="activity-toolbar no-print"><select id="activitySelect"></select><button class="btn soft" id="addActivityBtn">＋新增活動</button><button class="btn ghost" id="reclassifyBtn">重新自動判別</button></div>
+        <div id="activityEmpty" class="state-card">先新增一個活動，才能分析宣傳成果。</div>
+        <div id="activityDashboard" class="hidden">
+          <div class="metric-grid activity-metrics" id="activityMetricCards"></div>
           <div class="grid-2">
-            <article class="card chart-card">
-              <div class="card-head">
-                <div><p class="eyebrow">PERFORMANCE TREND</p><h3>效益走勢</h3></div>
-                <select id="overviewTrendMetric">
-                  <option value="views">觀看／曝光</option>
-                  <option value="interactions">互動</option>
-                  <option value="netFollowers">淨追蹤成長</option>
-                </select>
-              </div>
-              <div class="chart-wrap"><canvas id="overviewTrendChart"></canvas></div>
-            </article>
-            <article class="card chart-card">
-              <div class="card-head"><div><p class="eyebrow">PLATFORM MIX</p><h3>各平台貢獻</h3></div></div>
-              <div class="chart-wrap"><canvas id="platformChart"></canvas></div>
-            </article>
+            <article class="card chart-card"><div class="card-head"><h3>各平台宣傳效益</h3></div><div class="chart-wrap"><canvas id="activityPlatformChart"></canvas></div></article>
+            <article class="card chart-card"><div class="card-head"><h3>民眾主要詢問什麼？</h3></div><div class="chart-wrap"><canvas id="activityInquiryChart"></canvas></div></article>
           </div>
+          <article class="card"><div class="card-head"><div><p class="eyebrow">CONTENT REVIEW</p><h3>系統判定的宣傳內容</h3></div><span class="hint">取消「納入」不會刪除原資料，只是不計入這個活動分析。</span></div><div class="table-wrap"><table id="activityContentTable"></table></div></article>
+          <article class="card"><div class="card-head"><div><p class="eyebrow">INQUIRY REVIEW</p><h3>與本活動相關的詢問</h3></div></div><div class="table-wrap"><table id="activityInquiryTable"></table></div></article>
+        </div>
+      </section>
 
-          <div class="grid-3">
-            <article class="card insight-card">
-              <p class="eyebrow">BEST PLATFORM</p>
-              <h3 id="bestPlatformTitle">—</h3>
-              <p id="bestPlatformText" class="subtle">—</p>
-            </article>
-            <article class="card insight-card">
-              <p class="eyebrow">BEST CONTENT</p>
-              <h3 id="bestContentTitle">—</h3>
-              <p id="bestContentText" class="subtle">—</p>
-            </article>
-            <article class="card insight-card">
-              <p class="eyebrow">GROWTH SIGNAL</p>
-              <h3 id="growthTitle">—</h3>
-              <p id="growthText" class="subtle">—</p>
-            </article>
-          </div>
+      <section class="view" id="view-content">
+        <div class="section-title"><p class="eyebrow">CONTENT LIBRARY</p><h2>宣傳內容管理</h2><p class="subtle">貼文、Reels、限時動態、Threads 都可以放進來。系統先猜活動，你再決定是否採用。</p></div>
+        <div class="toolbar no-print"><button class="btn soft" id="addContentBtn">＋新增宣傳內容</button><label class="btn ghost file-btn">匯入 CSV<input id="contentCsvInput" type="file" accept=".csv,text/csv" hidden /></label><button class="btn ghost" id="downloadContentTemplateBtn">下載 CSV 範本</button></div>
+        <div class="filter-row no-print"><input id="contentSearch" type="search" placeholder="搜尋文案、網址…"/><select id="contentActivityFilter"></select><select id="contentStatusFilter"><option value="all">全部判定狀態</option><option value="high">高信心</option><option value="medium">待確認</option><option value="low">低信心／待勾選</option><option value="manual">人工指定</option><option value="excluded">已排除</option><option value="none">未歸類</option></select></div>
+        <article class="card"><div class="table-wrap"><table id="contentTable"></table></div></article>
+      </section>
 
-          <article class="card">
-            <div class="card-head">
-              <div><p class="eyebrow">MONTHLY SCORECARD</p><h3>每月成果表</h3></div>
-              <span class="hint">可直接當年度成果附件的骨架</span>
-            </div>
-            <div class="table-wrap"><table id="monthlyTable"></table></div>
-          </article>
-        </section>
+      <section class="view" id="view-inquiries">
+        <div class="section-title"><p class="eyebrow">VOICE OF CITIZEN</p><h2>民眾詢問分析</h2><p class="subtle">分析私訊／後台留言「主要卡在哪裡」，作為下一次活動資訊設計與客服回覆的改善依據。</p></div>
+        <div class="privacy-note"><strong>隱私提醒：</strong>只貼詢問內容即可，不要輸入姓名、電話、Email、帳號 ID 等個資。</div>
+        <div class="toolbar no-print"><button class="btn soft" id="addInquiryBtn">＋貼上詢問內容</button><label class="btn ghost file-btn">匯入 CSV<input id="inquiryCsvInput" type="file" accept=".csv,text/csv" hidden /></label><button class="btn ghost" id="downloadInquiryTemplateBtn">下載 CSV 範本</button></div>
+        <div class="grid-2">
+          <article class="card chart-card"><div class="card-head"><h3>詢問主題分布</h3></div><div class="chart-wrap"><canvas id="inquiryTopicChart"></canvas></div></article>
+          <article class="card"><div class="card-head"><h3>改善提示</h3></div><div id="improvementTips" class="tips-list"></div></article>
+        </div>
+        <article class="card"><div class="card-head"><h3>詢問明細與人工校正</h3><span class="hint">活動與主題都可以改；取消納入後不計入分析。</span></div><div class="table-wrap"><table id="inquiryTable"></table></div></article>
+      </section>
 
-        <section class="view" id="view-trend">
-          <div class="section-title"><p class="eyebrow">TREND & COMPARISON</p><h2>趨勢分析</h2><p class="subtle">看「現在是多少」不夠，還要看「有沒有越做越好」。</p></div>
-          <div class="grid-2">
-            <article class="card chart-card tall">
-              <div class="card-head"><h3>平台觀看／曝光趨勢</h3><span class="hint">日資料自動按期間聚合</span></div>
-              <div class="chart-wrap"><canvas id="viewsTrendChart"></canvas></div>
-            </article>
-            <article class="card chart-card tall">
-              <div class="card-head"><h3>互動趨勢</h3><span class="hint">各平台定義保留原差異</span></div>
-              <div class="chart-wrap"><canvas id="interactionsTrendChart"></canvas></div>
-            </article>
-          </div>
-          <div class="grid-2">
-            <article class="card chart-card">
-              <div class="card-head"><h3>追蹤者淨成長</h3></div>
-              <div class="chart-wrap"><canvas id="followersChart"></canvas></div>
-            </article>
-            <article class="card">
-              <div class="card-head"><h3>期間比較</h3></div>
-              <div id="comparisonPanel" class="comparison-list"></div>
-            </article>
-          </div>
-        </section>
+      <section class="view" id="view-report">
+        <div class="section-title"><p class="eyebrow">BUDGET EVIDENCE</p><h2>年度成果</h2><p class="subtle">把社群量體、活動轉換與民眾需求整理成可用於年度成果與後續經費說明的證據。</p></div>
+        <div class="grid-2 report-grid">
+          <article class="card"><div class="card-head"><h3>年度核心成果</h3></div><div id="reportMetrics" class="report-stat-list"></div></article>
+          <article class="card report-summary-card"><div class="card-head"><h3>成果摘要草稿</h3><button class="btn small ghost no-print" id="copySummaryBtn">複製</button></div><div id="reportSummary" class="report-copy"></div></article>
+        </div>
+        <article class="card"><div class="card-head"><h3>活動宣傳成效比較</h3></div><div class="table-wrap"><table id="activitySummaryTable"></table></div></article>
+        <article class="card"><div class="card-head"><h3>年度民眾詢問熱點</h3></div><div id="annualInquirySummary" class="topic-summary"></div></article>
+      </section>
 
-        <section class="view" id="view-content">
-          <div class="section-title"><p class="eyebrow">CONTENT INTELLIGENCE</p><h2>內容效益</h2><p class="subtle">找出什麼內容值得繼續投資，而不是只說「這篇讚數很多」。</p></div>
-          <div class="content-kpis" id="contentKpis"></div>
-          <div class="grid-2">
-            <article class="card chart-card">
-              <div class="card-head"><h3>內容類型效益</h3><select id="contentMetric"><option value="views">平均觀看</option><option value="interactions">平均互動</option><option value="engagement">互動率</option></select></div>
-              <div class="chart-wrap"><canvas id="contentTypeChart"></canvas></div>
-            </article>
-            <article class="card">
-              <div class="card-head"><h3>發文時段熱區</h3><span class="hint">以貼文績效平均值計算</span></div>
-              <div id="heatmap" class="heatmap"></div>
-            </article>
-          </div>
-          <article class="card">
-            <div class="card-head">
-              <div><p class="eyebrow">TOP CONTENT</p><h3>高效內容排行</h3></div>
-              <div class="inline-controls"><select id="topPostMetric"><option value="views">觀看／曝光</option><option value="interactions">互動數</option><option value="engagement">互動率</option></select><select id="topPostLimit"><option value="10">Top 10</option><option value="20">Top 20</option><option value="50">Top 50</option></select></div>
-            </div>
-            <div class="table-wrap"><table id="topPostsTable"></table></div>
-          </article>
-        </section>
+      <section class="view" id="view-data">
+        <div class="section-title"><p class="eyebrow">DATA MANAGEMENT</p><h2>資料管理</h2><p class="subtle">這個版本沒有 Meta Token、沒有 API 排程。資料先存在你的瀏覽器，再定期備份到 GitHub。</p></div>
+        <div class="data-banner"><div><strong>建議工作方式</strong><p>每月更新完 → 按「下載網站資料檔」→ 在 GitHub 覆蓋 <code>data/manual-data.json</code>。這樣換電腦或清除瀏覽器也不怕資料遺失。</p></div><span id="localSaveStatus">已啟用本機自動儲存</span></div>
+        <div class="data-actions no-print">
+          <button class="btn primary" id="downloadDataBtn">下載網站資料檔</button>
+          <label class="btn ghost file-btn">匯入備份 JSON<input id="jsonImportInput" type="file" accept=".json,application/json" hidden /></label>
+          <button class="btn ghost" id="resetLocalBtn">重新載入 GitHub 資料</button>
+        </div>
+        <div class="grid-3 data-counts" id="dataCounts"></div>
+        <article class="card"><div class="card-head"><h3>資料定義</h3></div><div class="definition-grid">
+          <div><strong>內容互動</strong><p>讚、留言、分享、收藏、限動互動、連結點擊與其他內容動作。</p></div>
+          <div><strong>服務互動</strong><p>以「私訊／諮詢對話數」計算，不直接拿訊息則數灌高互動。</p></div>
+          <div><strong>訊息則數</strong><p>另外保存，用來看客服量能；不與「有幾組民眾來詢問」混在一起。</p></div>
+          <div><strong>活動歸屬</strong><p>系統只做建議。人工指定、納入／排除永遠優先於自動判斷。</p></div>
+        </div></article>
+      </section>
+    </div>
+  </main>
+</div>
 
-        <section class="view" id="view-report">
-          <div class="section-title"><p class="eyebrow">BUDGET EVIDENCE PACK</p><h2>經費成果報告</h2><p class="subtle">把社群數據翻譯成「為什麼值得繼續編列經費」。</p></div>
-          <div class="grid-2 report-grid">
-            <article class="card">
-              <div class="card-head"><div><p class="eyebrow">KPI PROGRESS</p><h3>年度 KPI 達成率</h3></div></div>
-              <div id="goalProgress" class="progress-list"></div>
-            </article>
-            <article class="card report-summary-card">
-              <div class="card-head"><div><p class="eyebrow">AUTO SUMMARY</p><h3>成果摘要草稿</h3></div><button class="btn small ghost no-print" id="copySummaryBtn">複製文字</button></div>
-              <div id="reportSummary" class="report-copy"></div>
-            </article>
-          </div>
-          <article class="card">
-            <div class="card-head"><div><p class="eyebrow">EVIDENCE TABLE</p><h3>年度效益證據表</h3></div><button class="btn small ghost no-print" id="downloadJsonBtn">下載完整 JSON</button></div>
-            <div class="table-wrap"><table id="evidenceTable"></table></div>
-          </article>
-          <article class="card methodology">
-            <p class="eyebrow">METHODOLOGY</p>
-            <h3>報告建議怎麼引用這些數字？</h3>
-            <div class="method-grid">
-              <div><strong>1. 先講量體</strong><p>年度總觀看／曝光、內容產出量、追蹤者規模。</p></div>
-              <div><strong>2. 再講品質</strong><p>互動數、互動率、高效內容占比，以及與前期相比是否成長。</p></div>
-              <div><strong>3. 最後講累積資產</strong><p>社群不是一次性宣傳；追蹤者與歷史內容會持續形成未來觸及基礎。</p></div>
-            </div>
-          </article>
-        </section>
+<div class="modal hidden" id="monthModal"><div class="modal-backdrop" data-close></div><div class="modal-card wide"><div class="modal-head"><div><p class="eyebrow">MONTHLY INPUT</p><h2>新增／更新本月社群數據</h2></div><button class="icon-btn" data-close>✕</button></div><form id="monthForm"><div class="form-row"><label>月份<input type="month" id="monthInput" required /></label></div><div id="platformMonthForms" class="platform-form-grid"></div><div class="modal-actions"><button type="button" class="btn ghost" data-close>取消</button><button type="submit" class="btn primary">儲存本月資料</button></div></form></div></div>
+<div class="modal hidden" id="activityModal"><div class="modal-backdrop" data-close></div><div class="modal-card"><div class="modal-head"><h2>新增活動</h2><button class="icon-btn" data-close>✕</button></div><form id="activityForm" class="stack-form"><label>活動名稱<input id="activityName" required placeholder="例如：2026 高雄創意造筏競賽" /></label><div class="form-row two"><label>宣傳開始<input type="date" id="activityStart" /></label><label>宣傳結束<input type="date" id="activityEnd" /></label></div><label>判別關鍵字／別名<textarea id="activityKeywords" rows="3" placeholder="用逗號分隔，例如：造筏, 小小造船師, 大港橋, 創意造筏"></textarea></label><label>備註<textarea id="activityNote" rows="2"></textarea></label><div class="modal-actions"><button type="button" class="btn ghost" data-close>取消</button><button class="btn primary" type="submit">建立並自動判別</button></div></form></div></div>
+<div class="modal hidden" id="contentModal"><div class="modal-backdrop" data-close></div><div class="modal-card"><div class="modal-head"><h2>新增宣傳內容</h2><button class="icon-btn" data-close>✕</button></div><form id="contentForm" class="stack-form"><div class="form-row two"><label>平台<select id="contentPlatform"><option value="facebook">Facebook</option><option value="instagram">Instagram</option><option value="threads">Threads</option></select></label><label>發布時間<input type="datetime-local" id="contentDate" required /></label></div><div class="form-row two"><label>內容類型<select id="contentType"><option>貼文</option><option>Reels</option><option>限時動態</option><option>Threads 貼文</option><option>直播</option><option>其他</option></select></label><label>網址（可空白）<input id="contentUrl" type="url" /></label></div><label>文案／內容摘要<textarea id="contentText" rows="4" required></textarea></label><div class="metric-input-grid"><label>觀看／曝光<input type="number" min="0" id="contentViews" /></label><label>觸及<input type="number" min="0" id="contentReach" /></label><label>讚／反應<input type="number" min="0" id="contentLikes" /></label><label>留言／回覆<input type="number" min="0" id="contentComments" /></label><label>分享／轉發<input type="number" min="0" id="contentShares" /></label><label>收藏<input type="number" min="0" id="contentSaves" /></label><label>連結點擊<input type="number" min="0" id="contentClicks" /></label><label>其他互動<input type="number" min="0" id="contentOther" /></label></div><div class="modal-actions"><button type="button" class="btn ghost" data-close>取消</button><button class="btn primary" type="submit">儲存並判別活動</button></div></form></div></div>
+<div class="modal hidden" id="inquiryModal"><div class="modal-backdrop" data-close></div><div class="modal-card"><div class="modal-head"><h2>貼上民眾詢問</h2><button class="icon-btn" data-close>✕</button></div><form id="inquiryForm" class="stack-form"><div class="form-row two"><label>平台<select id="inquiryPlatform"><option value="facebook">Facebook</option><option value="instagram">Instagram</option><option value="threads">Threads</option><option value="other">其他</option></select></label><label>日期<input type="date" id="inquiryDate" required /></label></div><label>詢問內容（每行一則）<textarea id="inquiryText" rows="10" required placeholder="請勿貼姓名、電話等個資。\n例如：請問小小造船師還有名額嗎？\n請問活動下雨會取消嗎？"></textarea></label><div class="modal-actions"><button type="button" class="btn ghost" data-close>取消</button><button class="btn primary" type="submit">加入並自動分類</button></div></form></div></div>
 
-        <section class="view" id="view-data">
-          <div class="section-title"><p class="eyebrow">DATA HEALTH</p><h2>資料狀態</h2><p class="subtle">先知道哪些資料真的有抓到、哪些指標因 API 權限或平台變更而缺漏。</p></div>
-          <div id="accountStatus" class="account-grid"></div>
-          <div class="grid-2">
-            <article class="card"><div class="card-head"><h3>最近蒐集紀錄</h3></div><div class="table-wrap"><table id="collectionLogTable"></table></div></article>
-            <article class="card"><div class="card-head"><h3>API 警告</h3><span class="hint" id="warningCount"></span></div><div id="warningsList" class="warning-list"></div></article>
-          </div>
-          <article class="card definitions">
-            <p class="eyebrow">METRIC DEFINITIONS</p><h3>跨平台數字不要硬混</h3>
-            <div class="definition-grid">
-              <div><strong>觀看／曝光 Views</strong><p>作為跨平台「被看見的量體」統一欄位，但每個平台官方定義仍有差異。</p></div>
-              <div><strong>觸及 Reach</strong><p>僅在 API 有提供可比較的唯一受眾指標時顯示；缺值不會被當成 0 人。</p></div>
-              <div><strong>互動 Interactions</strong><p>平台帳號層級可用官方 total interactions/engagement；貼文層級則加總讚、留言、分享、收藏、回覆、轉發等可取得動作。</p></div>
-              <div><strong>互動率</strong><p>預設用互動 ÷ 觀看（若無觀看則用觸及）。用於內容間相對比較，不宣稱是 Meta 官方單一指標。</p></div>
-            </div>
-          </article>
-        </section>
-      </div>
-    </main>
-  </div>
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div class="toast" id="toast"></div>
 </body>
 </html>

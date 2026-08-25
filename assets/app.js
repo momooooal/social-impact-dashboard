@@ -1,342 +1,84 @@
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => [...document.querySelectorAll(sel)];
-
-const PLATFORM = {
-  facebook: {label:'Facebook', color:'#1877f2'},
-  instagram: {label:'Instagram', color:'#c13584'},
-  threads: {label:'Threads', color:'#242424'}
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const STORAGE_KEY='social-impact-dashboard-v2';
+const PLATFORMS={facebook:{label:'Facebook',color:'#1877f2'},instagram:{label:'Instagram',color:'#c13584'},threads:{label:'Threads',color:'#242424'}};
+const TOPICS={
+  registration:{label:'報名方式',words:['怎麼報名','如何報名','報名網址','報名連結','哪裡報名','登記','報名方式']},
+  capacity:{label:'名額／候補',words:['額滿','名額','候補','備取','還有名額','順位']},
+  eligibility:{label:'資格／參加對象',words:['資格','可以參加','能參加','年齡','幾歲','對象','身分','戶籍','限制','親子','兒童','長者']},
+  time:{label:'時間／日期',words:['幾點','時間','日期','哪一天','哪天','開始時間','報到','幾號']},
+  location:{label:'地點／交通／停車',words:['地點','在哪','地址','交通','停車','捷運','公車','怎麼去','會場']},
+  fee:{label:'費用／付款／退費',words:['費用','多少錢','免費','繳費','付款','退費','退款','費用多少']},
+  program:{label:'活動內容／流程／規則',words:['活動內容','流程','怎麼玩','賽程','規則','辦法','行程','比賽方式','組別']},
+  equipment:{label:'裝備／服裝／材料',words:['帶什麼','裝備','服裝','穿什麼','材料','自備','攜帶']},
+  weather:{label:'天候／延期／取消',words:['下雨','颱風','天氣','延期','取消','停辦','雨天','照常']},
+  award:{label:'獎項／成績／證明',words:['獎金','獎品','成績','名次','證書','完賽','獎牌']},
+  other:{label:'其他',words:[]}
 };
-
-const state = {
-  data:null,
-  platforms:new Set(['facebook','instagram','threads']),
-  start:null,end:null,compare:true,
-  charts:{},
-  view:'overview'
-};
-
-const fmt = new Intl.NumberFormat('zh-TW');
-const fmtCompact = new Intl.NumberFormat('zh-TW',{notation:'compact',maximumFractionDigits:1});
-const fmtPct = (n) => `${(Number(n)||0).toFixed(2)}%`;
-const n = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
-const dateOnly = (v) => String(v||'').slice(0,10);
-const toDate = (v) => new Date(`${dateOnly(v)}T00:00:00`);
-const dateAdd = (d, days) => { const x=new Date(d); x.setDate(x.getDate()+days); return x; };
-const isoDate = (d) => d.toISOString().slice(0,10);
-const esc = (s='') => String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-const platformLabel = (p) => PLATFORM[p]?.label || p;
-const colorFor = (p) => PLATFORM[p]?.color || '#6f7d92';
-const compact = (v) => fmtCompact.format(Math.round(n(v)));
-
-function showToast(text){
-  const el=$('#toast'); el.textContent=text; el.classList.add('show');
-  clearTimeout(showToast.t); showToast.t=setTimeout(()=>el.classList.remove('show'),1800);
-}
-
-function postInteractions(p){
-  if (p.interactions != null) return n(p.interactions);
-  return ['likes','comments','replies','shares','saves','reposts','quotes','clicks'].reduce((s,k)=>s+n(p[k]),0);
-}
-function rowInteractions(r){
-  if (r.interactions != null) return n(r.interactions);
-  return ['likes','comments','replies','shares','saves','reposts','quotes','clicks'].reduce((s,k)=>s+n(r[k]),0);
-}
-function postEngagement(p){
-  const base=n(p.views)||n(p.reach); return base ? postInteractions(p)/base*100 : 0;
-}
-function rowNet(r){ return n(r.follows)-n(r.unfollows); }
-
-function filteredDaily(start=state.start,end=state.end){
-  return state.data.daily.filter(r => state.platforms.has(r.platform) && r.date>=start && r.date<=end);
-}
-function filteredPosts(start=state.start,end=state.end){
-  return state.data.posts.filter(p => state.platforms.has(p.platform) && dateOnly(p.timestamp)>=start && dateOnly(p.timestamp)<=end);
-}
-function metricsFor(start=state.start,end=state.end){
-  const rows=filteredDaily(start,end), posts=filteredPosts(start,end);
-  const views=rows.reduce((s,r)=>s+n(r.views),0);
-  const reachRows=rows.filter(r=>r.reach!=null);
-  const reach=reachRows.length?reachRows.reduce((s,r)=>s+n(r.reach),0):null;
-  const interactions=rows.reduce((s,r)=>s+rowInteractions(r),0);
-  const profileViews=rows.reduce((s,r)=>s+n(r.profile_views),0);
-  const netFollowers=followerGrowth(rows);
-  return {views,reach,interactions,profileViews,netFollowers,posts:posts.length,engagement:views?interactions/views*100:0};
-}
-function followerGrowth(rows){
-  const groups=groupBy(rows,r=>r.account_key);
-  let total=0;
-  for(const list of Object.values(groups)){
-    const sorted=[...list].sort((a,b)=>a.date.localeCompare(b.date));
-    const withFollowers=sorted.filter(r=>r.followers!=null);
-    if(withFollowers.length>=2) total += n(withFollowers.at(-1).followers)-n(withFollowers[0].followers);
-    else total += sorted.reduce((s,r)=>s+rowNet(r),0);
-  }
-  return total;
-}
-function groupBy(arr, fn){ return arr.reduce((o,x)=>{const k=fn(x);(o[k]??=[]).push(x);return o;},{}); }
-
-function previousRange(){
-  const s=toDate(state.start), e=toDate(state.end);
-  const days=Math.round((e-s)/86400000)+1;
-  const pe=dateAdd(s,-1), ps=dateAdd(pe,-days+1);
-  return {start:isoDate(ps), end:isoDate(pe)};
-}
-function deltaInfo(current, previous, invert=false){
-  if(!state.compare || previous==null) return {text:'—',cls:'flat'};
-  if(previous===0) return current===0?{text:'0%',cls:'flat'}:{text:'新增',cls:'up'};
-  const d=(current-previous)/Math.abs(previous)*100;
-  const good=invert?d<0:d>0;
-  return {text:`${d>0?'+':''}${d.toFixed(1)}%`,cls:Math.abs(d)<.05?'flat':good?'up':'down'};
-}
-
-function initFilters(){
-  const dates=state.data.daily.map(r=>r.date).filter(Boolean).sort();
-  const maxDate=dates.at(-1) || dateOnly(new Date().toISOString());
-  const yr=maxDate.slice(0,4);
-  state.start=`${yr}-01-01`; state.end=maxDate;
-  $('#startDate').value=state.start; $('#endDate').value=state.end;
-
-  const available=[...new Set(state.data.accounts.map(a=>a.platform))];
-  state.platforms=new Set(available);
-  $('#platformFilters').innerHTML=available.map(p=>`<button class="platform-chip active" data-platform="${p}">${platformLabel(p)}</button>`).join('');
-}
-
-function bindEvents(){
-  $$('.nav-item').forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));
-  $('#menuBtn').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
-  $('#rangePresets').addEventListener('click',(e)=>{
-    const b=e.target.closest('button'); if(!b)return;
-    $$('#rangePresets button').forEach(x=>x.classList.toggle('active',x===b));
-    setPreset(b.dataset.range);
-  });
-  $('#startDate').addEventListener('change',customRange);
-  $('#endDate').addEventListener('change',customRange);
-  $('#platformFilters').addEventListener('click',(e)=>{
-    const b=e.target.closest('button');if(!b)return; const p=b.dataset.platform;
-    if(state.platforms.has(p) && state.platforms.size>1){state.platforms.delete(p);b.classList.remove('active');}
-    else if(!state.platforms.has(p)){state.platforms.add(p);b.classList.add('active');}
-    renderAll();
-  });
-  $('#compareToggle').addEventListener('change',e=>{state.compare=e.target.checked;renderAll();});
-  $('#overviewTrendMetric').addEventListener('change',renderOverviewCharts);
-  $('#contentMetric').addEventListener('change',renderContentTypeChart);
-  $('#topPostMetric').addEventListener('change',renderTopPosts);
-  $('#topPostLimit').addEventListener('change',renderTopPosts);
-  $('#printBtn').addEventListener('click',()=>window.print());
-  $('#copySummaryBtn').addEventListener('click',copySummary);
-  $('#exportCsvBtn').addEventListener('click',exportSummaryCsv);
-  $('#downloadJsonBtn').addEventListener('click',downloadJson);
-}
-function switchView(view){
-  state.view=view;
-  $$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===view));
-  $$('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${view}`));
-  const names={overview:'社群效益總覽',trend:'社群趨勢分析',content:'內容效益分析',report:'經費成果報告',data:'資料狀態'};
-  $('#pageTitle').textContent=names[view]||names.overview;
-  $('#sidebar').classList.remove('open');
-  setTimeout(()=>Object.values(state.charts).forEach(c=>c?.resize()),50);
-}
-function setPreset(range){
-  const max=toDate([...state.data.daily.map(r=>r.date)].sort().at(-1));
-  let start;
-  if(range==='30') start=dateAdd(max,-29);
-  else if(range==='90') start=dateAdd(max,-89);
-  else if(range==='year') start=new Date(max.getFullYear(),0,1);
-  else start=new Date(max.getFullYear(),0,1);
-  state.start=isoDate(start);state.end=isoDate(max);
-  $('#startDate').value=state.start;$('#endDate').value=state.end;renderAll();
-}
-function customRange(){
-  const s=$('#startDate').value,e=$('#endDate').value;if(!s||!e||s>e)return;
-  state.start=s;state.end=e;$$('#rangePresets button').forEach(x=>x.classList.remove('active'));renderAll();
-}
-
-function renderAll(){
-  renderMetricCards();renderOverviewCharts();renderInsights();renderMonthlyTable();
-  renderTrend();renderContent();renderReport();renderDataStatus();
-}
-
-function renderMetricCards(){
-  const cur=metricsFor(); const pr=previousRange(); const prev=state.compare?metricsFor(pr.start,pr.end):null;
-  const cards=[
-    ['觀看／曝光',cur.views,prev?.views,'跨平台量體','views'],
-    ['互動總數',cur.interactions,prev?.interactions,'按平台可取得互動加總','interactions'],
-    ['平均互動率',cur.engagement,prev?.engagement,'互動 ÷ 觀看','pct'],
-    ['淨追蹤成長',cur.netFollowers,prev?.netFollowers,'期間追蹤者增加量','followers'],
-    ['內容產出',cur.posts,prev?.posts,'FB＋IG＋Threads 貼文','posts']
-  ];
-  $('#metricCards').innerHTML=cards.map(([label,val,pv,foot,type])=>{
-    const d=deltaInfo(val,pv); const display=type==='pct'?fmtPct(val):fmt.format(Math.round(val));
-    return `<article class="metric-card"><div class="metric-label"><span>${label}</span><span class="delta ${d.cls}">${d.text}</span></div><div class="metric-value">${display}</div><div class="metric-foot"><span>${foot}</span><span>${state.compare?'較前期':''}</span></div></article>`;
-  }).join('');
-}
-
-function aggregateSeries(metric){
-  const rows=filteredDaily();
-  const span=Math.round((toDate(state.end)-toDate(state.start))/86400000)+1;
-  const bucket=span>180?7:span>90?3:1;
-  const groups={};
-  for(const r of rows){
-    const dayIndex=Math.floor((toDate(r.date)-toDate(state.start))/86400000);
-    const bucketStart=isoDate(dateAdd(toDate(state.start),Math.floor(dayIndex/bucket)*bucket));
-    const key=`${bucketStart}|${r.platform}`;
-    if(!groups[key]) groups[key]={date:bucketStart,platform:r.platform,value:0};
-    const value=metric==='netFollowers'?rowNet(r):metric==='interactions'?rowInteractions(r):n(r[metric]);
-    groups[key].value+=value;
-  }
-  const dates=[...new Set(Object.values(groups).map(x=>x.date))].sort();
-  return {dates,datasets:[...state.platforms].map(p=>({label:platformLabel(p),platform:p,data:dates.map(d=>groups[`${d}|${p}`]?.value||0)}))};
-}
-function chart(id,type,config){
-  if(state.charts[id]) state.charts[id].destroy();
-  const ctx=document.getElementById(id); if(!ctx || typeof Chart==='undefined')return;
-  state.charts[id]=new Chart(ctx,{type,data:config.data,options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,usePointStyle:true,font:{size:10}}},tooltip:{callbacks:config.tooltipCallbacks||{}}},scales:config.scales||{},...config.options}});
-}
-function lineChart(id,metric){
-  const s=aggregateSeries(metric);
-  chart(id,'line',{data:{labels:s.dates,datasets:s.datasets.map(ds=>({label:ds.label,data:ds.data,borderColor:colorFor(ds.platform),backgroundColor:colorFor(ds.platform),borderWidth:2,pointRadius:0,tension:.25}))},
-    scales:{x:{grid:{display:false},ticks:{maxTicksLimit:8,font:{size:9}}},y:{beginAtZero:true,grid:{color:'#edf0f5'},ticks:{callback:v=>compact(v),font:{size:9}}}}});
-}
-function renderOverviewCharts(){
-  lineChart('overviewTrendChart',$('#overviewTrendMetric').value);
-  const rows=filteredDaily(); const grouped=groupBy(rows,r=>r.platform);
-  const labels=[...state.platforms].map(platformLabel);
-  const data=[...state.platforms].map(p=>grouped[p]?.reduce((s,r)=>s+n(r.views),0)||0);
-  chart('platformChart','doughnut',{data:{labels,datasets:[{data,backgroundColor:[...state.platforms].map(colorFor),borderWidth:0}]},options:{cutout:'68%'}});
-}
-
-function renderInsights(){
-  const rows=filteredDaily(),posts=filteredPosts();
-  const byP=groupBy(rows,r=>r.platform);
-  const perf=[...state.platforms].map(p=>({p,views:(byP[p]||[]).reduce((s,r)=>s+n(r.views),0),inter:(byP[p]||[]).reduce((s,r)=>s+rowInteractions(r),0),growth:followerGrowth(byP[p]||[])}));
-  const best=perf.sort((a,b)=>b.views-a.views)[0];
-  $('#bestPlatformTitle').textContent=best?platformLabel(best.p):'—';
-  $('#bestPlatformText').textContent=best?`貢獻 ${compact(best.views)} 次觀看／曝光，占本期主要量體。`:'目前沒有資料';
-  const top=[...posts].sort((a,b)=>postInteractions(b)-postInteractions(a))[0];
-  $('#bestContentTitle').textContent=top?`${platformLabel(top.platform)}｜${compact(postInteractions(top))} 互動`:'—';
-  $('#bestContentText').textContent=top?(top.text||'無貼文文字').slice(0,76):'目前沒有貼文資料';
-  const grow=[...perf].sort((a,b)=>b.growth-a.growth)[0];
-  $('#growthTitle').textContent=grow?`${platformLabel(grow.p)} +${fmt.format(Math.round(grow.growth))}`:'—';
-  $('#growthText').textContent=grow?'本期淨追蹤成長最高的平台，可作為後續資源配置參考。':'目前沒有追蹤成長資料';
-}
-
-function monthlyData(){
-  const rows=filteredDaily(), posts=filteredPosts();
-  const groups=groupBy(rows,r=>r.date.slice(0,7));
-  const postGroups=groupBy(posts,p=>dateOnly(p.timestamp).slice(0,7));
-  return Object.keys(groups).sort().map(m=>{
-    const rr=groups[m];const views=rr.reduce((s,r)=>s+n(r.views),0);const inter=rr.reduce((s,r)=>s+rowInteractions(r),0);
-    return {month:m,views,interactions:inter,growth:followerGrowth(rr),posts:(postGroups[m]||[]).length,engagement:views?inter/views*100:0};
-  });
-}
-function renderMonthlyTable(){
-  const data=monthlyData();
-  $('#monthlyTable').innerHTML=`<thead><tr><th>月份</th><th class="num">觀看／曝光</th><th class="num">互動</th><th class="num">互動率</th><th class="num">淨追蹤</th><th class="num">貼文數</th></tr></thead><tbody>${data.map(r=>`<tr><td><strong>${r.month}</strong></td><td class="num">${fmt.format(Math.round(r.views))}</td><td class="num">${fmt.format(Math.round(r.interactions))}</td><td class="num">${fmtPct(r.engagement)}</td><td class="num">${r.growth>=0?'+':''}${fmt.format(Math.round(r.growth))}</td><td class="num">${r.posts}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">無資料</td></tr>'}</tbody>`;
-}
-
-function renderTrend(){
-  lineChart('viewsTrendChart','views');lineChart('interactionsTrendChart','interactions');lineChart('followersChart','netFollowers');
-  const cur=metricsFor();const pr=previousRange();const prev=metricsFor(pr.start,pr.end);
-  const items=[['觀看／曝光',cur.views,prev.views],['互動總數',cur.interactions,prev.interactions],['平均互動率',cur.engagement,prev.engagement,true],['淨追蹤成長',cur.netFollowers,prev.netFollowers],['內容產出',cur.posts,prev.posts]];
-  $('#comparisonPanel').innerHTML=items.map(([label,v,p,isPct])=>{const d=deltaInfo(v,p);return `<div class="comparison-row"><div><strong>${label}</strong><span>前期 ${isPct?fmtPct(p):fmt.format(Math.round(p))}</span></div><div class="delta ${d.cls}">${d.text}</div></div>`}).join('');
-}
-
-function renderContent(){
-  const posts=filteredPosts();
-  const views=posts.reduce((s,p)=>s+n(p.views),0), inter=posts.reduce((s,p)=>s+postInteractions(p),0);
-  const avg=posts.length?views/posts.length:0, er=views?inter/views*100:0;
-  const high=posts.filter(p=>postEngagement(p)>=er*1.5).length;
-  $('#contentKpis').innerHTML=[['期間貼文',posts.length],['平均單篇觀看',compact(avg)],['內容互動率',fmtPct(er)],['高效內容篇數',high]].map(([a,b])=>`<div class="mini-kpi"><span>${a}</span><strong>${b}</strong></div>`).join('');
-  renderContentTypeChart();renderHeatmap();renderTopPosts();
-}
-function renderContentTypeChart(){
-  const posts=filteredPosts();const metric=$('#contentMetric').value;const g=groupBy(posts,p=>`${platformLabel(p.platform)}｜${p.media_type||'POST'}`);
-  const rows=Object.entries(g).map(([k,v])=>{
-    let value=0;
-    if(metric==='views')value=v.reduce((s,p)=>s+n(p.views),0)/v.length;
-    else if(metric==='interactions')value=v.reduce((s,p)=>s+postInteractions(p),0)/v.length;
-    else value=v.reduce((s,p)=>s+postEngagement(p),0)/v.length;
-    return {k,value};
-  }).sort((a,b)=>b.value-a.value).slice(0,10);
-  chart('contentTypeChart','bar',{data:{labels:rows.map(x=>x.k),datasets:[{label:metric==='engagement'?'平均互動率 (%)':metric==='views'?'平均觀看':'平均互動',data:rows.map(x=>x.value),backgroundColor:'#5578df',borderRadius:6}]},scales:{x:{grid:{display:false},ticks:{font:{size:9}}},y:{beginAtZero:true,grid:{color:'#edf0f5'},ticks:{callback:v=>metric==='engagement'?`${v}%`:compact(v),font:{size:9}}}},options:{plugins:{legend:{display:false}}}});
-}
-function renderHeatmap(){
-  const posts=filteredPosts(); const days=['一','二','三','四','五','六','日']; const ranges=['00–05','06–11','12–17','18–23'];
-  const vals={};
-  posts.forEach(p=>{const d=new Date(p.timestamp);let wd=d.getDay();wd=wd===0?6:wd-1;const rb=Math.floor(d.getHours()/6);const k=`${rb}-${wd}`;(vals[k]??=[]).push(postInteractions(p));});
-  const avgs=Object.fromEntries(Object.entries(vals).map(([k,v])=>[k,v.reduce((a,b)=>a+b,0)/v.length]));
-  const max=Math.max(1,...Object.values(avgs));
-  let html='<div class="heatmap-grid"><div class="heat-cell header"></div>'+days.map(d=>`<div class="heat-cell header">週${d}</div>`).join('');
-  ranges.forEach((r,ri)=>{html+=`<div class="heat-cell header">${r}</div>`;days.forEach((_,di)=>{const v=avgs[`${ri}-${di}`]||0;const level=v?Math.min(5,Math.ceil(v/max*5)):0;html+=`<div class="heat-cell ${level?`level-${level}`:''}" title="平均互動 ${Math.round(v)}">${v?compact(v):'—'}</div>`});});
-  html+='</div>';$('#heatmap').innerHTML=html;
-}
-function renderTopPosts(){
-  const metric=$('#topPostMetric').value,limit=n($('#topPostLimit').value)||10;
-  const value=p=>metric==='engagement'?postEngagement(p):metric==='interactions'?postInteractions(p):n(p.views);
-  const posts=[...filteredPosts()].sort((a,b)=>value(b)-value(a)).slice(0,limit);
-  $('#topPostsTable').innerHTML=`<thead><tr><th>#</th><th>平台</th><th>發布日</th><th>內容</th><th>類型</th><th class="num">觀看</th><th class="num">互動</th><th class="num">互動率</th></tr></thead><tbody>${posts.map((p,i)=>`<tr><td>${i+1}</td><td><span class="platform-dot" style="background:${colorFor(p.platform)}"></span>${platformLabel(p.platform)}</td><td>${dateOnly(p.timestamp)}</td><td class="post-title">${p.permalink&&p.permalink!=='#'?`<a href="${esc(p.permalink)}" target="_blank" rel="noopener">${esc((p.text||'無文字').slice(0,95))}</a>`:esc((p.text||'無文字').slice(0,95))}</td><td>${esc(p.media_type||'—')}</td><td class="num">${fmt.format(Math.round(n(p.views)))}</td><td class="num">${fmt.format(Math.round(postInteractions(p)))}</td><td class="num">${fmtPct(postEngagement(p))}</td></tr>`).join('')||'<tr><td colspan="8" class="empty">本期間無貼文資料</td></tr>'}</tbody>`;
-}
-
-function renderReport(){
-  const cur=metricsFor();const project=state.data.meta?.project||{};const goals=project.goals||{};
-  const growth=cur.netFollowers, values={views:cur.views,interactions:cur.interactions,followers_growth:growth,posts:cur.posts};
-  const labels={views:'年度觀看／曝光',interactions:'年度互動',followers_growth:'追蹤者淨成長',posts:'內容產出'};
-  $('#goalProgress').innerHTML=Object.entries(labels).map(([k,label])=>{const goal=n(goals[k]);const val=n(values[k]);const pct=goal?val/goal*100:0;return `<div class="progress-item"><div class="progress-top"><strong>${label}</strong><span>${fmt.format(Math.round(val))} / ${goal?fmt.format(Math.round(goal)):'未設定'}</span></div><div class="progress-track"><div class="progress-fill" style="width:${Math.min(100,pct)}%"></div></div><div class="hint">${goal?`達成 ${pct.toFixed(1)}%`:'請在 config/accounts.json 設定年度目標'}</div></div>`}).join('');
-  $('#reportSummary').innerHTML=buildReportSummary(cur,project);
-  renderEvidenceTable();
-}
-function buildReportSummary(cur,project){
-  const org=esc(project.organization||'本單位');const y=project.fiscal_year||state.end.slice(0,4);const pr=previousRange();const prev=metricsFor(pr.start,pr.end);const dv=deltaInfo(cur.views,prev.views),di=deltaInfo(cur.interactions,prev.interactions);
-  const posts=filteredPosts();const top=[...posts].sort((a,b)=>postInteractions(b)-postInteractions(a))[0];
-  return `<p><strong>${org} ${y} 年社群經營成果：</strong>於 ${state.start} 至 ${state.end} 期間，Facebook、Instagram 與 Threads 共產出 <strong>${fmt.format(cur.posts)}</strong> 則內容，累積 <strong>${fmt.format(Math.round(cur.views))}</strong> 次觀看／曝光及 <strong>${fmt.format(Math.round(cur.interactions))}</strong> 次互動，期間淨增加 <strong>${fmt.format(Math.round(cur.netFollowers))}</strong> 名追蹤者。</p>
-  <p>與前一等長期間相比，觀看／曝光為 <strong class="delta ${dv.cls}">${dv.text}</strong>，互動為 <strong class="delta ${di.cls}">${di.text}</strong>；整體平均互動率約 <strong>${fmtPct(cur.engagement)}</strong>。此結果可作為社群內容持續投入、跨平台經營及後續宣傳資源配置之量化依據。</p>
-  ${top?`<p>本期高互動內容以 <strong>${platformLabel(top.platform)}</strong> 貼文表現最突出，單篇累積約 <strong>${fmt.format(Math.round(postInteractions(top)))}</strong> 次互動，可作為後續主題、素材形式與發文策略優化之參考。</p>`:''}
-  <p class="hint">註：跨平台指標定義不同，本摘要的「觀看／曝光」為統一量體欄位；正式對外或核銷成果文件建議同步附平台別明細。</p>`;
-}
-function platformMetrics(p){
-  const saved=new Set(state.platforms);state.platforms=new Set([p]);const m=metricsFor();state.platforms=saved;return m;
-}
-function renderEvidenceTable(){
-  const rows=[...state.platforms].map(p=>({p,...platformMetrics(p)}));
-  const total=metricsFor();
-  $('#evidenceTable').innerHTML=`<thead><tr><th>平台</th><th class="num">觀看／曝光</th><th class="num">觸及*</th><th class="num">互動</th><th class="num">互動率</th><th class="num">淨追蹤</th><th class="num">內容</th></tr></thead><tbody>${rows.map(r=>`<tr><td><strong>${platformLabel(r.p)}</strong></td><td class="num">${fmt.format(Math.round(r.views))}</td><td class="num">${r.reach==null?'—':fmt.format(Math.round(r.reach))}</td><td class="num">${fmt.format(Math.round(r.interactions))}</td><td class="num">${fmtPct(r.engagement)}</td><td class="num">${r.netFollowers>=0?'+':''}${fmt.format(Math.round(r.netFollowers))}</td><td class="num">${r.posts}</td></tr>`).join('')}<tr><td><strong>合計</strong></td><td class="num"><strong>${fmt.format(Math.round(total.views))}</strong></td><td class="num">${total.reach==null?'—':fmt.format(Math.round(total.reach))}</td><td class="num"><strong>${fmt.format(Math.round(total.interactions))}</strong></td><td class="num"><strong>${fmtPct(total.engagement)}</strong></td><td class="num"><strong>${total.netFollowers>=0?'+':''}${fmt.format(Math.round(total.netFollowers))}</strong></td><td class="num"><strong>${total.posts}</strong></td></tr></tbody>`;
-}
-
-function renderDataStatus(){
-  $('#accountStatus').innerHTML=state.data.accounts.map(a=>`<article class="account-card"><div class="account-head"><div class="platform-icon ${a.platform}">${a.platform==='facebook'?'f':a.platform==='instagram'?'IG':'@'}</div><div><h3>${esc(a.label||a.name||a.key)}</h3><div class="username">${a.username?'@'+esc(a.username):esc(a.id||'')}</div></div></div><div class="account-stat"><span>目前追蹤者</span><strong>${fmt.format(Math.round(n(a.followers)))}</strong></div><div class="account-stat"><span>資料狀態</span><span class="${a.status==='demo'?'status-demo':'status-ok'}">${a.status==='demo'?'示範資料':'已連線'}</span></div></article>`).join('');
-  const logs=[...(state.data.collection_log||[])].reverse();
-  $('#collectionLogTable').innerHTML=`<thead><tr><th>時間</th><th class="num">帳號</th><th class="num">日資料</th><th class="num">貼文</th><th class="num">警告</th></tr></thead><tbody>${logs.map(l=>`<tr><td>${esc(String(l.time||'').replace('T',' ').slice(0,19))}</td><td class="num">${n(l.accounts_ok)}</td><td class="num">${n(l.daily_rows)}</td><td class="num">${n(l.posts)}</td><td class="num">${n(l.warnings)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">尚無紀錄</td></tr>'}</tbody>`;
-  const warnings=state.data.warnings||[];$('#warningCount').textContent=`${warnings.length} 筆`;
-  $('#warningsList').innerHTML=warnings.length?warnings.slice().reverse().map(w=>`<div class="warning-item"><strong>${esc(w.account_key||'system')}｜${esc(w.purpose||'warning')}</strong><div>${esc(w.message||'')}</div><div class="hint">${esc(w.time||'')}</div></div>`).join(''):'<div class="empty">目前沒有 API 警告。</div>';
-}
-
-function copySummary(){
-  const text=$('#reportSummary').innerText;navigator.clipboard?.writeText(text).then(()=>showToast('成果摘要已複製')).catch(()=>showToast('請手動複製成果摘要'));
-}
-function downloadBlob(name,text,type){const blob=new Blob([text],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),500);}
-function csvCell(v){const s=String(v??'');return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;}
-function exportSummaryCsv(){
-  const rows=[['期間','平台','觀看/曝光','觸及','互動','互動率(%)','淨追蹤','內容數']];
-  [...state.platforms].forEach(p=>{const m=platformMetrics(p);rows.push([`${state.start}~${state.end}`,platformLabel(p),Math.round(m.views),m.reach==null?'':Math.round(m.reach),Math.round(m.interactions),m.engagement.toFixed(2),Math.round(m.netFollowers),m.posts]);});
-  const csv='\ufeff'+rows.map(r=>r.map(csvCell).join(',')).join('\n');downloadBlob(`social-impact-${state.start}-${state.end}.csv`,csv,'text/csv;charset=utf-8');showToast('CSV 已匯出');
-}
-function downloadJson(){downloadBlob(`social-impact-full-${state.end}.json`,JSON.stringify(state.data,null,2),'application/json');showToast('完整 JSON 已下載');}
-
-async function init(){
-  try{
-    const res=await fetch(`data/analytics.json?v=${Date.now()}`);if(!res.ok)throw new Error(`HTTP ${res.status}`);
-    state.data=await res.json();
-    state.data.daily=state.data.daily||[];state.data.posts=state.data.posts||[];state.data.accounts=state.data.accounts||[];
-    const project=state.data.meta?.project||{};
-    $('#brandTitle').textContent=project.title||'社群效益戰情室';$('#brandOrg').textContent=project.organization||'Social Impact Dashboard';
-    $('#dataStamp').textContent=`資料更新：${String(state.data.meta?.generated_at||'未知').replace('T',' ').replace('Z',' UTC').slice(0,25)}`;
-    const demo=state.data.meta?.source==='demo';$('#sourceBadge').textContent=demo?'目前使用示範資料':'Meta API 自動更新';$('#sourceBadge').classList.toggle('demo',demo);
-    initFilters();bindEvents();$('#loadingState').classList.add('hidden');$('#dashboard').classList.remove('hidden');renderAll();
-  }catch(err){
-    $('#loadingState').classList.add('hidden');$('#errorState').classList.remove('hidden');$('#errorState').innerHTML=`<strong>資料載入失敗</strong><br>${esc(err.message)}<br><small>若直接雙擊 index.html，瀏覽器可能阻擋 JSON。請用 GitHub Pages 或本機 HTTP server 開啟。</small>`;
-  }
-}
-
+const state={data:null,platforms:new Set(Object.keys(PLATFORMS)),year:2026,startMonth:1,endMonth:12,view:'overview',charts:{}};
+const fmt=new Intl.NumberFormat('zh-TW');
+const n=v=>Number.isFinite(Number(v))?Number(v):0;
+const esc=(s='')=>String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const uid=p=>`${p}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,7)}`;
+const pLabel=p=>PLATFORMS[p]?.label||p;
+const pColor=p=>PLATFORMS[p]?.color||'#708098';
+const monthKey=(y,m)=>`${y}-${String(m).padStart(2,'0')}`;
+const dateOnly=v=>String(v||'').slice(0,10);
+const normalize=s=>String(s||'').toLowerCase().replace(/[\s\p{P}\p{S}]/gu,'');
+const contentInteractions=r=>n(r.likes)+n(r.comments)+n(r.shares)+n(r.saves)+n(r.story_interactions)+n(r.link_clicks)+n(r.other_interactions);
+const itemInteractions=r=>n(r.likes)+n(r.comments)+n(r.shares)+n(r.saves)+n(r.clicks)+n(r.other);
+const showToast=t=>{const el=$('#toast');el.textContent=t;el.classList.add('show');clearTimeout(showToast.t);showToast.t=setTimeout(()=>el.classList.remove('show'),1900)};
+function save(){state.data.meta.updated_at=new Date().toISOString();localStorage.setItem(STORAGE_KEY,JSON.stringify(state.data));$('#dataStamp').textContent=`本機更新：${new Date().toLocaleString('zh-TW')}`;renderAll()}
+function download(name,text,type='application/json'){const b=new Blob([text],{type});const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),500)}
+function csvCell(v){const s=String(v??'');return /[",\n]/.test(s)?`"${s.replace(/"/g,'""')}"`:s}
+function parseCSV(text){const rows=[];let row=[],field='',q=false;for(let i=0;i<text.length;i++){const c=text[i],nx=text[i+1];if(q){if(c==='"'&&nx==='"'){field+='"';i++}else if(c==='"')q=false;else field+=c}else{if(c==='"')q=true;else if(c===','){row.push(field);field=''}else if(c==='\n'){row.push(field.replace(/\r$/,''));rows.push(row);row=[];field=''}else field+=c}}if(field.length||row.length){row.push(field.replace(/\r$/,''));rows.push(row)}const head=(rows.shift()||[]).map(x=>x.replace(/^\ufeff/,'').trim());return rows.filter(r=>r.some(x=>x.trim())).map(r=>Object.fromEntries(head.map((h,i)=>[h,(r[i]??'').trim()]))) }
+function inRangeMonth(m){if(!m)return false;const [y,mo]=m.split('-').map(Number);return y===state.year&&mo>=state.startMonth&&mo<=state.endMonth}
+function filteredMonthly(){return state.data.monthly.filter(r=>state.platforms.has(r.platform)&&inRangeMonth(r.month))}
+function filteredContent(){return state.data.content.filter(r=>state.platforms.has(r.platform)&&inRangeMonth(dateOnly(r.published_at).slice(0,7)))}
+function filteredInquiries(){return state.data.inquiries.filter(r=>(r.platform==='other'||state.platforms.has(r.platform))&&inRangeMonth(dateOnly(r.date).slice(0,7)))}
+function derivedNet(row){if(row.net_followers!==''&&row.net_followers!=null)return n(row.net_followers);const prev=state.data.monthly.filter(x=>x.platform===row.platform&&x.month<row.month&&x.followers_end!==''&&x.followers_end!=null).sort((a,b)=>b.month.localeCompare(a.month))[0];return prev?n(row.followers_end)-n(prev.followers_end):0}
+function metrics(rows=filteredMonthly()){return rows.reduce((o,r)=>{o.views+=n(r.views);o.reach+=n(r.reach);o.contentInteractions+=contentInteractions(r);o.serviceInteractions+=n(r.inbox_conversations);o.inboxMessages+=n(r.inbox_messages);o.netFollowers+=derivedNet(r);o.posts+=n(r.posts);o.reels+=n(r.reels);o.stories+=n(r.stories);o.profileViews+=n(r.profile_views);return o},{views:0,reach:0,contentInteractions:0,serviceInteractions:0,inboxMessages:0,netFollowers:0,posts:0,reels:0,stories:0,profileViews:0})}
+function classificationStatusLabel(s){return {high:'高信心',medium:'待確認',low:'低信心',manual:'人工指定',excluded:'已排除',none:'未歸類'}[s]||'未歸類'}
+function activityOptions(selected='',includeNone=true){return `${includeNone?'<option value="">未歸類</option>':''}`+state.data.activities.map(a=>`<option value="${a.id}" ${a.id===selected?'selected':''}>${esc(a.name)}</option>`).join('')}
+function topicOptions(selected='other'){return Object.entries(TOPICS).map(([k,v])=>`<option value="${k}" ${k===selected?'selected':''}>${v.label}</option>`).join('')}
+function classifyActivity(record){if(record.assignment_source==='manual')return record;const text=normalize(`${record.text||''} ${record.url||''}`);let best=null,bestScore=0;for(const a of state.data.activities){let score=0;const terms=[a.name,...(a.keywords||[])].filter(Boolean);for(const t of terms){const nt=normalize(t);if(nt&&text.includes(nt))score+=nt===normalize(a.name)?5:2}const d=dateOnly(record.published_at||record.date);if(d&&a.start_date&&a.end_date&&d>=a.start_date&&d<=a.end_date)score+=1;if(score>bestScore){bestScore=score;best=a}}if(!best||bestScore<2){record.activity_id='';record.confidence='none';record.included=record.included??true;return record}record.activity_id=best.id;if(bestScore>=5){record.confidence='high';record.included=record.included??true}else if(bestScore>=3){record.confidence='medium';record.included=record.included??true}else{record.confidence='low';record.included=record.included??false}record.assignment_source='auto';return record}
+function classifyTopic(text){const t=normalize(text);let best='other',score=0;for(const [k,v] of Object.entries(TOPICS)){if(k==='other')continue;const s=v.words.reduce((sum,w)=>sum+(t.includes(normalize(w))?1:0),0);if(s>score){score=s;best=k}}return best}
+function reclassifyAll(){state.data.content.forEach(r=>classifyActivity(r));state.data.inquiries.forEach(r=>{classifyActivity(r);if(r.topic_source!=='manual')r.topic=classifyTopic(r.text)});save();showToast('已重新自動判別')}
+function buildMonthPlatformCard(p){const fields=[['followers_end','月底追蹤者'],['net_followers','本月淨增追蹤'],['views','觀看／曝光'],['reach','觸及'],['posts','貼文數'],['reels','Reels 數'],['stories','限動數'],['likes','讚／反應'],['comments','留言／回覆'],['shares','分享／轉發'],['saves','收藏'],['story_interactions','限動互動'],['link_clicks','連結點擊'],['other_interactions','其他內容互動'],['inbox_conversations','私訊／諮詢對話數'],['inbox_messages','訊息則數'],['profile_views','個人檔案／粉專瀏覽']];return `<section class="platform-month-card" data-platform="${p}"><h3>${pLabel(p)}</h3><div class="fields">${fields.map(([k,l])=>`<label>${l}<input type="number" ${k==='net_followers'?'':'min="0"'} step="1" data-field="${k}" placeholder="0" /></label>`).join('')}</div><label style="margin-top:8px">備註<textarea rows="2" data-field="notes" placeholder="例如：本月大型活動宣傳、數字取自 Meta Business Suite…"></textarea></label></section>`}
+function openMonthModal(){const now=new Date(),m=monthKey(now.getFullYear(),now.getMonth()+1);$('#monthInput').value=m;fillMonthForm(m);openModal('monthModal')}
+function fillMonthForm(month){$$('.platform-month-card').forEach(card=>{const p=card.dataset.platform,row=state.data.monthly.find(r=>r.month===month&&r.platform===p)||{};card.querySelectorAll('[data-field]').forEach(el=>{el.value=row[el.dataset.field]??''})})}
+function saveMonthForm(e){e.preventDefault();const month=$('#monthInput').value;if(!month)return;$$('.platform-month-card').forEach(card=>{const p=card.dataset.platform,vals={};card.querySelectorAll('[data-field]').forEach(el=>vals[el.dataset.field]=el.type==='number'?(el.value===''?'':n(el.value)):el.value);let row=state.data.monthly.find(r=>r.month===month&&r.platform===p);if(!row){row={id:uid('m'),month,platform:p};state.data.monthly.push(row)}Object.assign(row,vals)});closeModals();save();refreshFilters();showToast('本月社群數據已儲存')}
+function openModal(id){$('#'+id).classList.remove('hidden')}
+function closeModals(){$$('.modal').forEach(m=>m.classList.add('hidden'))}
+function switchView(v){state.view=v;$$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.view===v));$$('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${v}`));$('#pageTitle').textContent={overview:'社群效益總覽',activity:'單一活動宣傳分析',content:'宣傳內容管理',inquiries:'民眾詢問分析',report:'年度成果',data:'資料管理'}[v];$('#sidebar').classList.remove('open');setTimeout(()=>Object.values(state.charts).forEach(c=>c?.resize()),60)}
+function refreshFilters(){const years=new Set([state.data.meta.fiscal_year,new Date().getFullYear(),...state.data.monthly.map(x=>Number(x.month.slice(0,4))),...state.data.content.map(x=>Number(dateOnly(x.published_at).slice(0,4))),...state.data.inquiries.map(x=>Number(dateOnly(x.date).slice(0,4)))]);const ys=[...years].filter(Boolean).sort((a,b)=>b-a);if(!ys.includes(state.year))state.year=ys[0]||new Date().getFullYear();$('#yearFilter').innerHTML=ys.map(y=>`<option ${y===state.year?'selected':''}>${y}</option>`).join('');const mos=Array.from({length:12},(_,i)=>i+1);$('#monthStart').innerHTML=mos.map(m=>`<option value="${m}" ${m===state.startMonth?'selected':''}>${m}月</option>`).join('');$('#monthEnd').innerHTML=mos.map(m=>`<option value="${m}" ${m===state.endMonth?'selected':''}>${m}月</option>`).join('');$('#platformFilters').innerHTML=Object.keys(PLATFORMS).map(p=>`<button class="platform-chip ${state.platforms.has(p)?'active':''}" data-platform="${p}">${pLabel(p)}</button>`).join('');refreshActivitySelectors()}
+function refreshActivitySelectors(){const cur=$('#activitySelect')?.value||state.data.activities[0]?.id||'';if($('#activitySelect'))$('#activitySelect').innerHTML=state.data.activities.length?state.data.activities.map(a=>`<option value="${a.id}" ${a.id===cur?'selected':''}>${esc(a.name)}</option>`).join(''):'<option value="">尚無活動</option>';if($('#contentActivityFilter'))$('#contentActivityFilter').innerHTML='<option value="all">全部活動</option><option value="">未歸類</option>'+state.data.activities.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('')}
+function destroyChart(k){state.charts[k]?.destroy();state.charts[k]=null}
+function makeChart(k,canvas,config){destroyChart(k);if(!window.Chart)return;state.charts[k]=new Chart($(canvas),config)}
+function renderOverview(){const m=metrics(),items=[['觀看／曝光',m.views,'跨平台量體'],['內容互動',m.contentInteractions,'讚・留言・分享・收藏・限動等'],['私訊諮詢',m.serviceInteractions,`共 ${fmt.format(m.inboxMessages)} 則訊息`],['淨追蹤成長',m.netFollowers,'月底追蹤差額／人工填寫'],['內容產出',m.posts+m.reels+m.stories,`${m.posts} 貼文・${m.reels} Reels・${m.stories} 限動`]];$('#metricCards').innerHTML=items.map(([l,v,f])=>`<article class="metric-card"><div class="metric-label">${l}</div><div class="metric-value">${fmt.format(Math.round(v))}</div><div class="metric-foot">${f}</div></article>`).join('');renderTrend();renderInteractionMix();renderMonthlyTable()}
+function renderTrend(){const metric=$('#trendMetric').value,labels=[],datasets=[];for(let mo=state.startMonth;mo<=state.endMonth;mo++)labels.push(`${mo}月`);for(const p of state.platforms){const vals=labels.map((_,i)=>{const mo=state.startMonth+i,r=state.data.monthly.find(x=>x.platform===p&&x.month===monthKey(state.year,mo));if(!r)return 0;return metric==='contentInteractions'?contentInteractions(r):metric==='serviceInteractions'?n(r.inbox_conversations):metric==='netFollowers'?derivedNet(r):n(r[metric])});datasets.push({label:pLabel(p),data:vals,borderColor:pColor(p),backgroundColor:pColor(p),tension:.28})}makeChart('trend','#trendChart',{type:'line',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}},scales:{y:{beginAtZero:true}}}})}
+function renderInteractionMix(){const rows=filteredMonthly();const parts={'讚／反應':0,'留言／回覆':0,'分享／轉發':0,'收藏':0,'限動互動':0,'連結點擊':0,'其他內容互動':0,'私訊諮詢':0};rows.forEach(r=>{parts['讚／反應']+=n(r.likes);parts['留言／回覆']+=n(r.comments);parts['分享／轉發']+=n(r.shares);parts['收藏']+=n(r.saves);parts['限動互動']+=n(r.story_interactions);parts['連結點擊']+=n(r.link_clicks);parts['其他內容互動']+=n(r.other_interactions);parts['私訊諮詢']+=n(r.inbox_conversations)});const entries=Object.entries(parts).filter(x=>x[1]>0);makeChart('interaction','#interactionChart',{type:'doughnut',data:{labels:entries.map(x=>x[0]),datasets:[{data:entries.map(x=>x[1])}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}})}
+function renderMonthlyTable(){const rows=[...filteredMonthly()].sort((a,b)=>a.month.localeCompare(b.month)||a.platform.localeCompare(b.platform));$('#monthlyTable').innerHTML=`<thead><tr><th>月份</th><th>平台</th><th class="num">追蹤者</th><th class="num">淨增</th><th class="num">觀看／曝光</th><th class="num">內容互動</th><th class="num">私訊諮詢</th><th class="num">訊息則數</th><th class="num">內容產出</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r.month}</td><td>${pLabel(r.platform)}</td><td class="num">${r.followers_end===''?'—':fmt.format(n(r.followers_end))}</td><td class="num">${fmt.format(derivedNet(r))}</td><td class="num">${fmt.format(n(r.views))}</td><td class="num">${fmt.format(contentInteractions(r))}</td><td class="num">${fmt.format(n(r.inbox_conversations))}</td><td class="num">${fmt.format(n(r.inbox_messages))}</td><td class="num">${fmt.format(n(r.posts)+n(r.reels)+n(r.stories))}</td></tr>`).join('')||'<tr><td colspan="9" class="state-card">還沒有本月資料，按上方「＋新增本月社群數據」開始。</td></tr>'}</tbody>`}
+function activityData(id){const c=state.data.content.filter(r=>r.activity_id===id&&r.included!==false),q=state.data.inquiries.filter(r=>r.activity_id===id&&r.included!==false);return {content:c,inquiries:q}}
+function renderActivity(){refreshActivitySelectors();const id=$('#activitySelect').value;if(!id){$('#activityEmpty').classList.remove('hidden');$('#activityDashboard').classList.add('hidden');return}$('#activityEmpty').classList.add('hidden');$('#activityDashboard').classList.remove('hidden');const a=state.data.activities.find(x=>x.id===id),{content,inquiries}=activityData(id);const views=content.reduce((s,x)=>s+n(x.views),0),ints=content.reduce((s,x)=>s+itemInteractions(x),0),high=content.filter(x=>x.confidence==='high'||x.assignment_source==='manual').length,questionCount=inquiries.length;$('#activityMetricCards').innerHTML=[['宣傳內容',content.length,'已納入分析'],['觀看／曝光',views,'納入內容加總'],['內容互動',ints,'讚留言分享收藏等'],['民眾詢問',questionCount,'與本活動相關'],['人工／高信心',high,`共 ${content.length} 筆內容`]].map(([l,v,f])=>`<article class="metric-card"><div class="metric-label">${l}</div><div class="metric-value">${fmt.format(v)}</div><div class="metric-foot">${f}</div></article>`).join('');const pRows=Object.keys(PLATFORMS).map(p=>({p,views:content.filter(x=>x.platform===p).reduce((s,x)=>s+n(x.views),0),ints:content.filter(x=>x.platform===p).reduce((s,x)=>s+itemInteractions(x),0)}));makeChart('actp','#activityPlatformChart',{type:'bar',data:{labels:pRows.map(x=>pLabel(x.p)),datasets:[{label:'觀看／曝光',data:pRows.map(x=>x.views),backgroundColor:pRows.map(x=>pColor(x.p))},{label:'互動',data:pRows.map(x=>x.ints)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}},scales:{y:{beginAtZero:true}}}});const tc=countTopics(inquiries),te=Object.entries(tc).sort((a,b)=>b[1]-a[1]);makeChart('actq','#activityInquiryChart',{type:'bar',data:{labels:te.map(([k])=>TOPICS[k]?.label||k),datasets:[{label:'詢問數',data:te.map(x=>x[1])}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{precision:0}}}}});$('#activityContentTable').innerHTML=contentReviewTable(state.data.content.filter(r=>r.activity_id===id));$('#activityInquiryTable').innerHTML=inquiryReviewTable(state.data.inquiries.filter(r=>r.activity_id===id));if(a)$('#activitySelect').title=`${a.start_date||''} ~ ${a.end_date||''}`}
+function contentReviewTable(rows){return `<thead><tr><th>納入</th><th>判定</th><th>平台</th><th>日期</th><th>內容</th><th>活動歸屬</th><th class="num">觀看</th><th class="num">互動</th></tr></thead><tbody>${rows.map(r=>`<tr><td><input class="include-check" type="checkbox" data-content-include="${r.id}" ${r.included!==false?'checked':''}></td><td><span class="status-badge status-${r.included===false?'excluded':r.assignment_source==='manual'?'manual':r.confidence||'none'}">${r.included===false?'已排除':r.assignment_source==='manual'?'人工指定':classificationStatusLabel(r.confidence)}</span></td><td>${pLabel(r.platform)}</td><td>${dateOnly(r.published_at)}</td><td class="wrap">${esc(r.text)}</td><td><select class="activity-select" data-content-activity="${r.id}">${activityOptions(r.activity_id)}</select></td><td class="num">${fmt.format(n(r.views))}</td><td class="num">${fmt.format(itemInteractions(r))}</td></tr>`).join('')||'<tr><td colspan="8">尚無內容</td></tr>'}</tbody>`}
+function inquiryReviewTable(rows){return `<thead><tr><th>納入</th><th>日期</th><th>平台</th><th>詢問內容</th><th>主題</th><th>活動歸屬</th></tr></thead><tbody>${rows.map(r=>`<tr><td><input class="include-check" type="checkbox" data-inquiry-include="${r.id}" ${r.included!==false?'checked':''}></td><td>${dateOnly(r.date)}</td><td>${pLabel(r.platform)}</td><td class="wrap">${esc(r.text)}</td><td><select class="topic-select" data-inquiry-topic="${r.id}">${topicOptions(r.topic)}</select></td><td><select class="activity-select" data-inquiry-activity="${r.id}">${activityOptions(r.activity_id)}</select></td></tr>`).join('')||'<tr><td colspan="6">尚無詢問資料</td></tr>'}</tbody>`}
+function renderContent(){const q=normalize($('#contentSearch').value),af=$('#contentActivityFilter').value,sf=$('#contentStatusFilter').value;let rows=[...state.data.content].sort((a,b)=>String(b.published_at).localeCompare(String(a.published_at)));rows=rows.filter(r=>(!q||normalize(`${r.text} ${r.url}`).includes(q))&&(af==='all'||r.activity_id===af));rows=rows.filter(r=>{const s=r.included===false?'excluded':r.assignment_source==='manual'?'manual':r.confidence||'none';return sf==='all'||s===sf});$('#contentTable').innerHTML=`<thead><tr><th>納入</th><th>判定</th><th>平台</th><th>發布</th><th>類型</th><th>內容</th><th>活動歸屬</th><th class="num">觀看</th><th class="num">互動</th><th>操作</th></tr></thead><tbody>${rows.map(r=>`<tr><td><input class="include-check" type="checkbox" data-content-include="${r.id}" ${r.included!==false?'checked':''}></td><td><span class="status-badge status-${r.included===false?'excluded':r.assignment_source==='manual'?'manual':r.confidence||'none'}">${r.included===false?'已排除':r.assignment_source==='manual'?'人工指定':classificationStatusLabel(r.confidence)}</span></td><td>${pLabel(r.platform)}</td><td>${dateOnly(r.published_at)}</td><td>${esc(r.content_type||'—')}</td><td class="wrap">${r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.text)}</a>`:esc(r.text)}</td><td><select class="activity-select" data-content-activity="${r.id}">${activityOptions(r.activity_id)}</select></td><td class="num">${fmt.format(n(r.views))}</td><td class="num">${fmt.format(itemInteractions(r))}</td><td><button class="btn small ghost" data-delete-content="${r.id}">刪除</button></td></tr>`).join('')||'<tr><td colspan="10" class="state-card">尚無宣傳內容。可以手動新增或匯入 CSV。</td></tr>'}</tbody>`}
+function countTopics(rows){const c={};rows.filter(r=>r.included!==false).forEach(r=>c[r.topic||'other']=(c[r.topic||'other']||0)+1);return c}
+function renderInquiries(){const rows=[...state.data.inquiries].sort((a,b)=>String(b.date).localeCompare(String(a.date))),tc=countTopics(rows),entries=Object.entries(tc).sort((a,b)=>b[1]-a[1]);makeChart('inq','#inquiryTopicChart',{type:'doughnut',data:{labels:entries.map(([k])=>TOPICS[k]?.label||k),datasets:[{data:entries.map(x=>x[1])}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}}});const tips=entries.slice(0,4).map(([k,v])=>improvementTip(k,v));$('#improvementTips').innerHTML=tips.length?tips.join(''):'<div class="state-card">累積一些詢問後，這裡會自動整理改善重點。</div>';$('#inquiryTable').innerHTML=`<thead><tr><th>納入</th><th>日期</th><th>平台</th><th>詢問內容</th><th>主題</th><th>活動歸屬</th><th>判定</th><th>操作</th></tr></thead><tbody>${rows.map(r=>`<tr><td><input class="include-check" type="checkbox" data-inquiry-include="${r.id}" ${r.included!==false?'checked':''}></td><td>${dateOnly(r.date)}</td><td>${pLabel(r.platform)}</td><td class="wrap">${esc(r.text)}</td><td><select class="topic-select" data-inquiry-topic="${r.id}">${topicOptions(r.topic)}</select></td><td><select class="activity-select" data-inquiry-activity="${r.id}">${activityOptions(r.activity_id)}</select></td><td><span class="status-badge status-${r.assignment_source==='manual'?'manual':r.confidence||'none'}">${r.assignment_source==='manual'?'人工指定':classificationStatusLabel(r.confidence)}</span></td><td><button class="btn small ghost" data-delete-inquiry="${r.id}">刪除</button></td></tr>`).join('')||'<tr><td colspan="8" class="state-card">尚無民眾詢問資料。</td></tr>'}</tbody>`}
+function improvementTip(k,v){const map={registration:'把報名入口、操作步驟與截止時間放到主視覺和貼文前段，減少「去哪裡報名」的私訊。',capacity:'公開即時名額／候補規則與候補通知方式，避免民眾反覆追問。',eligibility:'把年齡、身分、組別、陪同規則整理成「誰可以參加」區塊。',time:'活動日期、報到與開始時間使用固定格式，貼文、圖卡與報名頁保持一致。',location:'增加地圖、停車／捷運／公車資訊與入口照片，降低到場前的不確定。',fee:'把免費／收費、付款與退費條件集中放在報名資訊附近。',program:'用流程圖或 FAQ 說明活動內容、規則與現場流程。',equipment:'在行前提醒列出服裝、自備物品與現場提供項目。',weather:'事先寫清楚雨備、延期、取消與公告管道。',award:'把獎項、成績公告時間與證書方式整理成固定 FAQ。',other:'檢視無法歸類的詢問，新增活動專屬 FAQ 或自訂關鍵字。'};return `<div class="tip-item"><strong>${TOPICS[k]?.label||k}｜${v} 則</strong><p>${map[k]||map.other}</p></div>`}
+function activitySummary(){return state.data.activities.map(a=>{const d=activityData(a.id);return {a,content:d.content.length,views:d.content.reduce((s,x)=>s+n(x.views),0),ints:d.content.reduce((s,x)=>s+itemInteractions(x),0),inq:d.inquiries.length,top:Object.entries(countTopics(d.inquiries)).sort((x,y)=>y[1]-x[1])[0]?.[0]||''}}).sort((a,b)=>b.views-a.views)}
+function renderReport(){const m=metrics(state.data.monthly.filter(r=>r.month.startsWith(String(state.year)))),inq=state.data.inquiries.filter(r=>dateOnly(r.date).startsWith(String(state.year))&&r.included!==false),acts=activitySummary();$('#reportMetrics').innerHTML=[['觀看／曝光',m.views],['內容互動',m.contentInteractions],['私訊諮詢對話',m.serviceInteractions],['私訊訊息則數',m.inboxMessages],['淨追蹤成長',m.netFollowers],['活動分析數',state.data.activities.length]].map(([l,v])=>`<div class="report-stat"><span>${l}</span><strong>${fmt.format(v)}</strong></div>`).join('');const topA=acts[0],topT=Object.entries(countTopics(inq)).sort((a,b)=>b[1]-a[1])[0];$('#reportSummary').innerHTML=`<p><strong>${esc(state.data.meta.organization)} ${state.year} 年社群經營成果：</strong>目前累積 <strong>${fmt.format(m.views)}</strong> 次觀看／曝光、<strong>${fmt.format(m.contentInteractions)}</strong> 次內容互動，並記錄 <strong>${fmt.format(m.serviceInteractions)}</strong> 組私訊／諮詢對話（共 ${fmt.format(m.inboxMessages)} 則訊息）。</p><p>期間淨增加追蹤者 <strong>${fmt.format(m.netFollowers)}</strong> 人。${topA?`以「<strong>${esc(topA.a.name)}</strong>」目前彙整之宣傳觀看量最高，累積 ${fmt.format(topA.views)} 次觀看／曝光及 ${fmt.format(topA.ints)} 次內容互動。`:''}</p>${topT?`<p>民眾詢問以「<strong>${TOPICS[topT[0]]?.label||topT[0]}</strong>」最多（${topT[1]} 則），顯示後續活動宣傳可優先補強該資訊，降低民眾查找成本與後台客服負擔。</p>`:''}<p class="hint">註：本系統以人工輸入／匯入資料為準；活動歸屬與詢問主題經人工校正後再作正式報告引用。</p>`;$('#activitySummaryTable').innerHTML=`<thead><tr><th>活動</th><th class="num">宣傳內容</th><th class="num">觀看／曝光</th><th class="num">內容互動</th><th class="num">相關詢問</th><th>最多詢問</th></tr></thead><tbody>${acts.map(x=>`<tr><td>${esc(x.a.name)}</td><td class="num">${x.content}</td><td class="num">${fmt.format(x.views)}</td><td class="num">${fmt.format(x.ints)}</td><td class="num">${x.inq}</td><td>${x.top?(TOPICS[x.top]?.label||x.top):'—'}</td></tr>`).join('')||'<tr><td colspan="6">尚無活動</td></tr>'}</tbody>`;const topics=Object.entries(countTopics(inq)).sort((a,b)=>b[1]-a[1]);$('#annualInquirySummary').innerHTML=topics.map(([k,v])=>`<span class="topic-pill"><strong>${TOPICS[k]?.label||k}</strong> ${v} 則</span>`).join('')||'<span class="subtle">尚無詢問資料</span>'}
+function renderData(){const d=state.data;$('#dataCounts').innerHTML=[['月份平台資料',d.monthly.length],['活動',d.activities.length],['宣傳內容',d.content.length],['民眾詢問',d.inquiries.length],['人工指定內容',d.content.filter(x=>x.assignment_source==='manual').length],['已排除分析',d.content.filter(x=>x.included===false).length+d.inquiries.filter(x=>x.included===false).length]].map(([l,v])=>`<div class="mini-stat"><span>${l}</span><strong>${fmt.format(v)}</strong></div>`).join('')}
+function renderAll(){renderOverview();renderActivity();renderContent();renderInquiries();renderReport();renderData()}
+function addActivity(e){e.preventDefault();const a={id:uid('a'),name:$('#activityName').value.trim(),start_date:$('#activityStart').value,end_date:$('#activityEnd').value,keywords:$('#activityKeywords').value.split(/[,，\n]/).map(x=>x.trim()).filter(Boolean),note:$('#activityNote').value.trim()};state.data.activities.push(a);$('#activityForm').reset();closeModals();reclassifyAll();refreshActivitySelectors();$('#activitySelect').value=a.id;switchView('activity');renderActivity();showToast('活動已建立')}
+function addContent(e){e.preventDefault();const r={id:uid('c'),platform:$('#contentPlatform').value,published_at:$('#contentDate').value,content_type:$('#contentType').value,url:$('#contentUrl').value.trim(),text:$('#contentText').value.trim(),views:n($('#contentViews').value),reach:n($('#contentReach').value),likes:n($('#contentLikes').value),comments:n($('#contentComments').value),shares:n($('#contentShares').value),saves:n($('#contentSaves').value),clicks:n($('#contentClicks').value),other:n($('#contentOther').value),included:null,assignment_source:'auto'};classifyActivity(r);state.data.content.push(r);$('#contentForm').reset();closeModals();save();showToast('宣傳內容已加入')}
+function addInquiry(e){e.preventDefault();const lines=$('#inquiryText').value.split(/\n+/).map(x=>x.trim()).filter(Boolean),p=$('#inquiryPlatform').value,d=$('#inquiryDate').value;lines.forEach(text=>{const r={id:uid('q'),platform:p,date:d,text,topic:classifyTopic(text),topic_source:'auto',included:null,assignment_source:'auto'};classifyActivity(r);state.data.inquiries.push(r)});$('#inquiryForm').reset();closeModals();save();showToast(`已加入 ${lines.length} 則詢問`)}
+function importContentCSV(file){const fr=new FileReader();fr.onload=()=>{try{const rows=parseCSV(fr.result);let count=0;rows.forEach(x=>{if(!x.text&&!x.文案)return;const r={id:x.id||uid('c'),platform:(x.platform||x.平台||'facebook').toLowerCase(),published_at:x.published_at||x.發布時間||x.date||'',content_type:x.content_type||x.內容類型||'貼文',url:x.url||x.網址||'',text:x.text||x.文案||'',views:n(x.views||x['觀看/曝光']),reach:n(x.reach||x.觸及),likes:n(x.likes||x['讚/反應']),comments:n(x.comments||x['留言/回覆']),shares:n(x.shares||x['分享/轉發']),saves:n(x.saves||x.收藏),clicks:n(x.clicks||x.連結點擊),other:n(x.other||x.其他互動),included:null,assignment_source:'auto'};classifyActivity(r);state.data.content.push(r);count++});save();showToast(`已匯入 ${count} 筆宣傳內容`)}catch(e){alert('CSV 讀取失敗：'+e.message)}};fr.readAsText(file,'utf-8')}
+function importInquiryCSV(file){const fr=new FileReader();fr.onload=()=>{try{const rows=parseCSV(fr.result);let count=0;rows.forEach(x=>{const text=x.text||x.詢問內容;if(!text)return;const r={id:x.id||uid('q'),platform:(x.platform||x.平台||'facebook').toLowerCase(),date:x.date||x.日期||'',text,topic:x.topic&&TOPICS[x.topic]?x.topic:classifyTopic(text),topic_source:x.topic?'manual':'auto',included:true,assignment_source:'auto'};classifyActivity(r);state.data.inquiries.push(r);count++});save();showToast(`已匯入 ${count} 則詢問`)}catch(e){alert('CSV 讀取失敗：'+e.message)}};fr.readAsText(file,'utf-8')}
+function bindDynamicChanges(e){const t=e.target;if(t.matches('[data-content-include]')){const r=state.data.content.find(x=>x.id===t.dataset.contentInclude);r.included=t.checked;save()}else if(t.matches('[data-content-activity]')){const r=state.data.content.find(x=>x.id===t.dataset.contentActivity);r.activity_id=t.value;r.assignment_source='manual';r.confidence='manual';r.included=true;save()}else if(t.matches('[data-inquiry-include]')){const r=state.data.inquiries.find(x=>x.id===t.dataset.inquiryInclude);r.included=t.checked;save()}else if(t.matches('[data-inquiry-activity]')){const r=state.data.inquiries.find(x=>x.id===t.dataset.inquiryActivity);r.activity_id=t.value;r.assignment_source='manual';r.confidence='manual';r.included=true;save()}else if(t.matches('[data-inquiry-topic]')){const r=state.data.inquiries.find(x=>x.id===t.dataset.inquiryTopic);r.topic=t.value;r.topic_source='manual';save()}}
+function bindClicks(e){const t=e.target.closest('button');if(!t)return;if(t.dataset.deleteContent){if(confirm('刪除這筆宣傳內容？')){state.data.content=state.data.content.filter(x=>x.id!==t.dataset.deleteContent);save()}}if(t.dataset.deleteInquiry){if(confirm('刪除這筆詢問？')){state.data.inquiries=state.data.inquiries.filter(x=>x.id!==t.dataset.deleteInquiry);save()}}}
+function templateContent(){const head=['platform','published_at','content_type','url','text','views','reach','likes','comments','shares','saves','clicks','other'];const ex=['facebook','2026-09-01 12:00','貼文','https://example.com','活動宣傳文案',10000,7000,500,20,80,15,120,0];download('宣傳內容匯入範本.csv','\ufeff'+[head,ex].map(r=>r.map(csvCell).join(',')).join('\n'),'text/csv;charset=utf-8')}
+function templateInquiry(){const head=['date','platform','text'];const ex=['2026-09-01','facebook','請問活動還有名額嗎？'];download('民眾詢問匯入範本.csv','\ufeff'+[head,ex].map(r=>r.map(csvCell).join(',')).join('\n'),'text/csv;charset=utf-8')}
+function bindEvents(){$$('.nav-item').forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));$('#menuBtn').onclick=()=>$('#sidebar').classList.toggle('open');$('#addMonthBtn').onclick=$('#addMonthBtn2').onclick=openMonthModal;$('#monthInput').addEventListener('change',e=>fillMonthForm(e.target.value));$('#monthForm').addEventListener('submit',saveMonthForm);$('#addActivityBtn').onclick=()=>openModal('activityModal');$('#activityForm').addEventListener('submit',addActivity);$('#addContentBtn').onclick=()=>{const d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());$('#contentDate').value=d.toISOString().slice(0,16);openModal('contentModal')};$('#contentForm').addEventListener('submit',addContent);$('#addInquiryBtn').onclick=()=>{$('#inquiryDate').value=new Date().toISOString().slice(0,10);openModal('inquiryModal')};$('#inquiryForm').addEventListener('submit',addInquiry);$$('[data-close]').forEach(x=>x.addEventListener('click',closeModals));document.addEventListener('change',bindDynamicChanges);document.addEventListener('click',bindClicks);$('#reclassifyBtn').onclick=reclassifyAll;$('#activitySelect').onchange=renderActivity;$('#contentSearch').oninput=renderContent;$('#contentActivityFilter').onchange=renderContent;$('#contentStatusFilter').onchange=renderContent;$('#trendMetric').onchange=renderTrend;$('#yearFilter').onchange=e=>{state.year=n(e.target.value);renderAll()};$('#monthStart').onchange=e=>{state.startMonth=n(e.target.value);if(state.startMonth>state.endMonth){state.endMonth=state.startMonth;$('#monthEnd').value=state.endMonth}renderAll()};$('#monthEnd').onchange=e=>{state.endMonth=n(e.target.value);if(state.endMonth<state.startMonth){state.startMonth=state.endMonth;$('#monthStart').value=state.startMonth}renderAll()};$('#platformFilters').addEventListener('click',e=>{const b=e.target.closest('[data-platform]');if(!b)return;const p=b.dataset.platform;if(state.platforms.has(p)&&state.platforms.size>1)state.platforms.delete(p);else state.platforms.add(p);refreshFilters();renderAll()});$('#contentCsvInput').onchange=e=>{if(e.target.files[0])importContentCSV(e.target.files[0]);e.target.value=''};$('#inquiryCsvInput').onchange=e=>{if(e.target.files[0])importInquiryCSV(e.target.files[0]);e.target.value=''};$('#downloadContentTemplateBtn').onclick=templateContent;$('#downloadInquiryTemplateBtn').onclick=templateInquiry;$('#downloadDataBtn').onclick=()=>{download('manual-data.json',JSON.stringify(state.data,null,2));showToast('網站資料檔已下載')};$('#jsonImportInput').onchange=e=>{const f=e.target.files[0];if(!f)return;const fr=new FileReader();fr.onload=()=>{try{const d=JSON.parse(fr.result);if(!d.monthly||!d.activities||!d.content||!d.inquiries)throw new Error('不是本系統資料格式');state.data=d;save();refreshFilters();showToast('備份已匯入')}catch(err){alert('匯入失敗：'+err.message)}};fr.readAsText(f);e.target.value=''};$('#resetLocalBtn').onclick=()=>{if(confirm('會清除這台瀏覽器尚未備份的變更，重新載入 GitHub 上的 data/manual-data.json。確定？')){localStorage.removeItem(STORAGE_KEY);location.reload()}};$('#copySummaryBtn').onclick=()=>navigator.clipboard?.writeText($('#reportSummary').innerText).then(()=>showToast('成果摘要已複製'));$('#printBtn').onclick=()=>window.print()}
+async function init(){try{let d;const local=localStorage.getItem(STORAGE_KEY);if(local)d=JSON.parse(local);else{const res=await fetch(`data/manual-data.json?v=${Date.now()}`);if(!res.ok)throw new Error(`HTTP ${res.status}`);d=await res.json()}state.data=d;['monthly','activities','content','inquiries'].forEach(k=>state.data[k]=state.data[k]||[]);state.year=n(state.data.meta?.fiscal_year)||new Date().getFullYear();$('#brandOrg').textContent=state.data.meta?.organization||'社群效益戰情室';$('#dataStamp').textContent=state.data.meta?.updated_at?`資料更新：${new Date(state.data.meta.updated_at).toLocaleString('zh-TW')}`:'尚未輸入資料';$('#platformMonthForms').innerHTML=Object.keys(PLATFORMS).map(buildMonthPlatformCard).join('');refreshFilters();bindEvents();$('#loadingState').classList.add('hidden');$('#dashboard').classList.remove('hidden');renderAll()}catch(e){$('#loadingState').classList.add('hidden');$('#errorState').classList.remove('hidden');$('#errorState').innerHTML=`<strong>資料載入失敗</strong><br>${esc(e.message)}<br><small>請從 GitHub Pages 開啟，不要直接雙擊 index.html。</small>`}}
 document.addEventListener('DOMContentLoaded',init);
-
-window.addEventListener('chartjs-ready',()=>{ if(state.data) renderAll(); });

@@ -1,201 +1,75 @@
-# 社群效益戰情室 Social Impact Dashboard
+# 社群效益戰情室 v2｜免 API 版
 
-把 Facebook、Instagram、Threads 的後台效益集中成一個可部署到 GitHub Pages 的年度社群成果網站。
+這是一個可部署在 GitHub Pages 的 Facebook／Instagram／Threads 社群效益整理網站。此版本**不使用 Meta API、不需要 Access Token、不會自動登入社群帳號**；改採每月人工輸入＋CSV匯入，網站在瀏覽器中自動完成彙整、活動分類、民眾詢問分析與年度成果摘要。
 
-這不是只有「漂亮圖表」的 dashboard。它的核心目標是：**從現在開始累積歷史資料，讓明年爭取社群宣傳／委外／廣告／素材製作經費時，有完整的量化證據。**
+## 這版解決什麼
 
-## 已做好的功能
+- 「＋新增本月社群數據」：一次填 FB／IG／Threads 當月後台數字。
+- 互動不只貼文：可記錄限時動態互動、連結點擊、私訊諮詢對話、訊息則數。
+- 單一活動宣傳分析：建立活動名稱、宣傳期間與關鍵字，系統自動判斷哪些貼文／限動／Threads／詢問屬於該活動。
+- 人工校正優先：每筆資料都可改活動、勾選納入／排除；系統不會把猜測當成不可修改的真相。
+- 民眾詢問分析：自動分為報名、名額候補、資格、時間、地點交通、費用、流程規則、裝備、天候、獎項等，並產生改善提示。
+- 年度成果：彙整社群量體、內容互動、私訊諮詢、追蹤成長、活動效益與民眾詢問熱點。
+- 完全靜態：只需要 GitHub Pages，沒有伺服器費用。
 
-- Facebook / Instagram / Threads 多帳號彙整
-- GitHub Actions 每日自動抓取 Meta API，不把 Access Token 放在前端
-- `data/analytics.json` 持續累積歷史快照
-- 觀看／曝光、互動、互動率、淨追蹤成長、內容產出 KPI
-- 近 30 天／90 天／今年至今／年度／自訂日期
-- 與「前一等長期間」自動比較
-- 各平台效益占比與趨勢
-- 每月成果表
-- 高效貼文 Top 10 / 20 / 50
-- 內容類型績效、發文時段熱區
-- 年度 KPI 目標達成率
-- 自動產生「經費成果報告摘要」文字
-- 平台別年度效益證據表
-- CSV、JSON 匯出與瀏覽器列印／另存 PDF
-- API 警告與資料蒐集紀錄
-- API 尚未完成前，可用 CSV 手動匯入當備援
-- 手機／桌機 RWD
+## 重要：資料存在哪裡？
 
-## 架構
+GitHub Pages 是靜態網站，瀏覽器不能直接把表單資料寫回 GitHub Repository。
 
-```text
-Meta API
-   │
-   │ Access Token 只存在 GitHub Secrets
-   ▼
-GitHub Actions（每日 01:20 台灣時間）
-   │
-   ├─ scripts/collect.py
-   │    ├─ Facebook Page Insights
-   │    ├─ Instagram Professional Account Insights
-   │    └─ Threads Insights
-   │
-   ▼
-data/analytics.json  ← 每天累積，不覆蓋掉以前歷史
-   │
-   ▼
-GitHub Pages
-   └─ index.html + assets/app.js + assets/style.css
-```
+因此本版採兩層保存：
 
-## 5 分鐘先把示範網站架起來
+1. **平常輸入：瀏覽器 localStorage 自動保存。** 在同一個 GitHub Pages 網址、同一瀏覽器開啟時，資料會留著。
+2. **正式備份：資料管理 →「下載網站資料檔」**，會下載 `manual-data.json`。把它覆蓋 Repository 的 `data/manual-data.json` 後，資料就會成為 GitHub 上的正式版本，也能換電腦使用。
 
-1. 在 GitHub 建立一個 Repository。
-2. 把本專案全部檔案上傳到 Repository 根目錄。
-3. GitHub Repository → **Settings → Pages**。
-4. Build and deployment 的 Source 選 **GitHub Actions**。
-5. 到 Actions 執行 `Deploy dashboard to GitHub Pages`，或 push 一次 main。
-6. GitHub Pages 網址就會顯示示範版 dashboard。
+建議每次完成月報或大量匯入後就備份一次。
 
-> 一開始 `data/analytics.json` 是示範資料。Meta Token 還沒設好也可以先確認網站長相。
+## 建議每月流程
 
-## 接上真實帳號
+1. 到 Meta Business Suite／Instagram／Threads 後台整理當月數字。
+2. 網站按「＋新增本月社群數據」，填三平台資料。
+3. 有需要做活動分析時，先建立活動，再匯入／新增宣傳內容。
+4. 將後台私訊或留言**去除姓名、電話、Email 等個資後**貼到「民眾詢問分析」。
+5. 檢查系統活動判定，將誤判內容改掛活動或取消「納入」。
+6. 到「資料管理」下載 `manual-data.json`，更新到 GitHub。
 
-請看 [`SETUP_GUIDE.md`](SETUP_GUIDE.md)。
+## 互動的計算方式
 
-最重要的是三件事：
+### 內容互動
 
-1. 修改 `config/accounts.json`：填 Page / IG / Threads ID。
-2. GitHub → Settings → Secrets and variables → Actions：新增 Access Token。
-3. Actions 手動執行 `Collect social insights`。
+`讚／反應 + 留言／回覆 + 分享／轉發 + 收藏 + 限動互動 + 連結點擊 + 其他內容互動`
 
-成功後，`data/analytics.json` 會從示範資料改成真實資料；往後每天自動更新。
+### 服務互動
 
-## 多帳號
+以「私訊／諮詢**對話數**」作為服務互動，不直接拿訊息總則數灌高互動。例如同一位民眾連續傳 10 則訊息，仍可記為 1 組諮詢對話、10 則訊息。
 
-`config/accounts.json` 可以同時放多個帳號，例如：
+### 訊息則數
 
-```json
-{
-  "key": "ig-campaign",
-  "platform": "instagram",
-  "id": "1784XXXXXXXXXXX",
-  "label": "活動專用 IG",
-  "token_env": "IG_TOKEN_2",
-  "enabled": true
-}
-```
+另外保存，用來呈現客服／資訊回應量能，不與諮詢人次混為一談。
 
-工作流程已預留：
+## CSV
 
-- `FB_TOKEN_1` ～ `FB_TOKEN_5`
-- `IG_TOKEN_1` ～ `IG_TOKEN_5`
-- `THREADS_TOKEN_1` ～ `THREADS_TOKEN_5`
+網站內可直接下載兩種範本：
 
-若超過 5 個，只要照相同方式在 `.github/workflows/collect-social.yml` 增加環境變數即可。
+- 宣傳內容 CSV
+- 民眾詢問 CSV
 
-## 年度 KPI
-
-`config/accounts.json`：
-
-```json
-"goals": {
-  "views": 1800000,
-  "interactions": 130000,
-  "followers_growth": 4500,
-  "posts": 300
-}
-```
-
-這些數字會自動出現在「經費成果報告 → 年度 KPI 達成率」。
-
-## API 還沒申請好？先用手動 CSV
-
-提供兩個模板：
-
-- `data/manual_daily_template.csv`
-- `data/manual_posts_template.csv`
-
-填完後執行：
-
-```bash
-python scripts/import_csv.py \
-  --daily data/manual_daily_template.csv \
-  --posts data/manual_posts_template.csv
-```
-
-它會合併進同一份 `data/analytics.json`，所以網站不用改。
-
-## 安全性
-
-### Token
-
-Access Token **不要**寫進：
-
-- `index.html`
-- `assets/app.js`
-- `config/accounts.json`
-- `data/analytics.json`
-
-只放 GitHub Actions Secrets。
-
-### 報表資料本身
-
-GitHub Pages 是靜態網站。若 Repository / Pages 對外公開，`data/analytics.json` 的數字也等同公開資料。
-
-如果你的社群效益數據屬於內部機密，不要用「前端密碼」假裝保護 GitHub Pages；那不是真正的存取控制。請改用有登入權限的內部平台或受保護的主機。
-
-## 指標解讀
-
-不同平台對 views / reach / engagement 的官方定義不完全相同。因此網站採兩層資料：
-
-- **平台原生資料**：保留 API 真正回傳的欄位。
-- **跨平台標準化資料**：用 `views`、`interactions`、`followers` 等共同欄位做主管總覽。
-
-正式成果文件建議同時放：
-
-- 全平台合計量體
-- Facebook / Instagram / Threads 個別明細
-- 指標定義註記
-
-不要把三個平台的 Reach 當成同一種「不重複總人數」相加後宣稱為唯一人數。
+若 Meta 匯出的是 Excel，可先在 Excel 另存為 UTF-8 CSV 再匯入。
 
 ## 檔案結構
 
 ```text
 .
-├─ index.html                       # 網站畫面
+├─ index.html
 ├─ assets/
-│  ├─ app.js                        # dashboard 計算、圖表、報告
-│  └─ style.css                     # 視覺與 RWD
-├─ config/
-│  ├─ accounts.json                 # 真正使用的帳號設定
-│  └─ accounts.example.json         # 範例
+│  ├─ app.js
+│  └─ style.css
 ├─ data/
-│  ├─ analytics.json                # 歷史資料倉庫／網站資料源
-│  ├─ manual_daily_template.csv     # 手動匯入範例
-│  └─ manual_posts_template.csv
-├─ scripts/
-│  ├─ collect.py                    # Meta API 自動蒐集
-│  └─ import_csv.py                 # 手動 CSV 備援
-├─ .github/workflows/
-│  ├─ deploy-pages.yml              # GitHub Pages 部署
-│  └─ collect-social.yml            # 每日抓資料＋部署
-├─ requirements.txt
-├─ SETUP_GUIDE.md
-└─ README.md
+│  └─ manual-data.json
+├─ templates/
+│  ├─ content-template.csv
+│  └─ inquiry-template.csv
+└─ .github/workflows/
+   └─ deploy-pages.yml
 ```
 
-## 目前 API 版本設定
-
-- Facebook / Instagram：`v26.0`
-- Threads：`v1.0`
-
-版本集中在 `config/accounts.json`，未來 Meta 換版時不必大改網站。
-
-## 重要限制
-
-- Instagram Insights 僅適用 Professional Account（Business / Creator），不是一般個人帳號。
-- 完整 Insights 需要帳號所有者／管理者授權；不能只靠公開帳號名稱讀到別人的後台數據。
-- Meta 會持續調整／淘汰指標。`collect.py` 對多數指標採「失敗就記 warning、其餘繼續」策略。
-- 部分帳號層級指標只有有限歷史保留期，因此**越早開始每日保存越好**。
-- 貼文 Insights 多為「目前累積值」，網站將它歸因到貼文發布日做內容成效比較，不表示所有互動都發生在發布日當天。
-
+本版已不需要 `collect.py`、Meta Token、`accounts.json` 或每日 API workflow。
