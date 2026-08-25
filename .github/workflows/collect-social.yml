@@ -1,0 +1,71 @@
+name: Collect social insights
+
+on:
+  schedule:
+    # GitHub Actions cron uses UTC. 17:20 UTC = 01:20 Asia/Taipei.
+    - cron: '20 17 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: social-data-collection
+  cancel-in-progress: false
+
+jobs:
+  collect-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    env:
+      FB_TOKEN_1: ${{ secrets.FB_TOKEN_1 }}
+      FB_TOKEN_2: ${{ secrets.FB_TOKEN_2 }}
+      FB_TOKEN_3: ${{ secrets.FB_TOKEN_3 }}
+      FB_TOKEN_4: ${{ secrets.FB_TOKEN_4 }}
+      FB_TOKEN_5: ${{ secrets.FB_TOKEN_5 }}
+      IG_TOKEN_1: ${{ secrets.IG_TOKEN_1 }}
+      IG_TOKEN_2: ${{ secrets.IG_TOKEN_2 }}
+      IG_TOKEN_3: ${{ secrets.IG_TOKEN_3 }}
+      IG_TOKEN_4: ${{ secrets.IG_TOKEN_4 }}
+      IG_TOKEN_5: ${{ secrets.IG_TOKEN_5 }}
+      THREADS_TOKEN_1: ${{ secrets.THREADS_TOKEN_1 }}
+      THREADS_TOKEN_2: ${{ secrets.THREADS_TOKEN_2 }}
+      THREADS_TOKEN_3: ${{ secrets.THREADS_TOKEN_3 }}
+      THREADS_TOKEN_4: ${{ secrets.THREADS_TOKEN_4 }}
+      THREADS_TOKEN_5: ${{ secrets.THREADS_TOKEN_5 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install collector dependencies
+        run: pip install -r requirements.txt
+      - name: Collect Meta insights
+        run: python scripts/collect.py
+      - name: Commit historical data snapshot
+        run: |
+          git config user.name "social-impact-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/analytics.json
+          if git diff --cached --quiet; then
+            echo "No data changes"
+          else
+            git commit -m "data: update social insights"
+            git push
+          fi
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: .
+      - name: Deploy updated dashboard
+        id: deployment
+        uses: actions/deploy-pages@v4
