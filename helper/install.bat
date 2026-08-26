@@ -1,39 +1,71 @@
 @echo off
-chcp 65001 >nul
-setlocal
+setlocal EnableExtensions
 cd /d "%~dp0"
+title Social Impact Helper - Setup
+
 echo ==========================================
-echo   社群資料小助手 - 首次安裝
+echo   Social Impact Helper - Windows Setup
 echo ==========================================
 echo.
-where py >nul 2>nul
-if errorlevel 1 (
-  echo [需要 Python]
-  echo 這台電腦尚未找到 Python Launcher。
-  echo 請先安裝 Python 3.11 以上，安裝時勾選 Add Python to PATH。
-  echo 官方下載：https://www.python.org/downloads/windows/
-  pause
-  exit /b 1
+
+set "PYEXE="
+py -3 --version >nul 2>&1
+if not errorlevel 1 set "PYEXE=py -3"
+
+if not defined PYEXE (
+  python --version >nul 2>&1
+  if not errorlevel 1 set "PYEXE=python"
 )
-if not exist .venv (
-  echo [1/4] 建立獨立環境...
-  py -3 -m venv .venv
+
+if not defined PYEXE goto :no_python
+
+echo [1/5] Python found.
+if not exist ".venv\Scripts\python.exe" (
+  echo [2/5] Creating virtual environment...
+  %PYEXE% -m venv ".venv"
   if errorlevel 1 goto :fail
+) else (
+  echo [2/5] Virtual environment already exists.
 )
-echo [2/4] 安裝套件...
-.venv\Scripts\python.exe -m pip install --upgrade pip
-.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+echo [3/5] Installing Python packages...
+".venv\Scripts\python.exe" -m pip install --upgrade pip
 if errorlevel 1 goto :fail
-echo [3/4] 安裝小助手專用 Chromium...
-.venv\Scripts\python.exe -m playwright install chromium
+".venv\Scripts\python.exe" -m pip install -r "requirements.txt"
 if errorlevel 1 goto :fail
-echo [4/4] 完成。
+
+echo [4/5] Installing helper browser...
+".venv\Scripts\python.exe" -m playwright install chromium
+if errorlevel 1 goto :fail
+
+echo [5/5] Verifying installation...
+".venv\Scripts\python.exe" -c "import tkinter, playwright, pandas, openpyxl; print('Verification OK')"
+if errorlevel 1 goto :fail
+
 echo.
-echo 之後直接雙擊「開啟小助手.bat」即可。
+echo ==========================================
+echo   Setup completed successfully.
+echo ==========================================
+echo You can now double-click open_helper.bat
 pause
 exit /b 0
+
+:no_python
+echo.
+echo Python 3 was not found on this computer.
+echo Install Python 3.11 or newer, then run this file again.
+echo During Python setup, enable: Add python.exe to PATH
+echo https://www.python.org/downloads/windows/
+echo.
+pause
+exit /b 2
+
 :fail
 echo.
-echo 安裝失敗。請把這個視窗截圖給 ChatGPT。
+echo ==========================================
+echo   Setup failed.
+echo ==========================================
+echo Please take a screenshot of this window and send it to ChatGPT.
+echo.
 pause
 exit /b 1

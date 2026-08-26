@@ -1,9 +1,5 @@
 @echo off
-chcp 65001 >nul
+setlocal EnableExtensions
 cd /d "%~dp0"
-if not exist .venv\Scripts\pythonw.exe (
-  echo 尚未安裝，請先雙擊 install.bat
-  pause
-  exit /b 1
-)
-start "" .venv\Scripts\pythonw.exe app.py
+call "open_helper.bat"
+exit /b %errorlevel%
