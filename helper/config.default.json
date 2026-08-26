@@ -1,0 +1,29 @@
+{
+  "organization": "高雄市政府運動發展局",
+  "timezone": "Asia/Taipei",
+  "daily_time": "18:00",
+  "dashboard_repo_path": "",
+  "auto_git_sync": false,
+  "platforms": {
+    "facebook": {
+      "enabled": true,
+      "label": "Facebook",
+      "insights_url": "https://business.facebook.com/latest/insights/overview?asset_id=255034405020824"
+    },
+    "instagram": {
+      "enabled": true,
+      "label": "Instagram",
+      "insights_url": "https://business.facebook.com/latest/insights/overview"
+    },
+    "threads": {
+      "enabled": true,
+      "label": "Threads",
+      "insights_url": "https://www.threads.com/insights"
+    }
+  },
+  "own_sender_names": [
+    "高雄市政府運動發展局"
+  ],
+  "collection_mode": "chrome-extension",
+  "chrome_exe": ""
+}
