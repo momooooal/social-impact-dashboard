@@ -2,10 +2,40 @@
   "meta": {
     "schema_version": 1,
     "source": "local-helper",
-    "updated_at": ""
+    "updated_at": "2026-08-26T17:33:47.638744+08:00"
   },
-  "monthly": [],
+  "monthly": [
+    {
+      "id": "collector-threads-2026-08",
+      "month": "2026-08",
+      "platform": "threads",
+      "source": "daily-snapshot",
+      "followers_end": 1118,
+      "views": 8408,
+      "other_interactions": 366,
+      "captured_at": "2026-08-26T17:33:37.619490+08:00"
+    }
+  ],
   "content": [],
   "inquiry_aggregates": [],
-  "collector_status": []
+  "collector_status": [
+    {
+      "platform": "facebook",
+      "ok": false,
+      "message": "Chrome 頁面有傳回資料，但尚未辨識到成效指標；請確認網址是 Insights／洞察報告頁。",
+      "last_run": "2026-08-26T17:32:54.559313+08:00"
+    },
+    {
+      "platform": "instagram",
+      "ok": false,
+      "message": "目前 Chrome 的登入狀態已失效，請在平常使用的 Chrome 重新登入。",
+      "last_run": "2026-08-26T17:33:18.589089+08:00"
+    },
+    {
+      "platform": "threads",
+      "ok": true,
+      "message": "從目前 Chrome 擷取 3 個指標",
+      "last_run": "2026-08-26T17:33:37.619490+08:00"
+    }
+  ]
 }
